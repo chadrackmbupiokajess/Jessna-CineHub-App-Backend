@@ -16,8 +16,22 @@ def login_view(request):
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
-            username = data.get('username')
+            username_or_email = data.get('username')
             password = data.get('password')
+
+            # Vérifier si c'est un email ou un nom d'utilisateur
+            if '@' in username_or_email:
+                # C'est un email, trouver le nom d'utilisateur correspondant
+                try:
+                    user_obj = User.objects.get(email=username_or_email)
+                    username = user_obj.username
+                except User.DoesNotExist:
+                    return JsonResponse({
+                        'success': False,
+                        'message': 'Identifiants incorrects'
+                    }, status=401)
+            else:
+                username = username_or_email
 
             user = authenticate(request, username=username, password=password)
             if user is not None:
