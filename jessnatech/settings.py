@@ -25,11 +25,12 @@ SECRET_KEY = 'django-insecure-k#x9_b@=3-1lq2krs)pinv*8t_@e-ns$5u6s1+q1zd3+_=7r!p
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
-ALLOWED_HOSTS = ['jessnacinehub.pythonanywhere.com', 'www.jessnacinehub.pythonanywhere.com']
+ALLOWED_HOSTS = ['jessnacinehub.pythonanywhere.com', 'www.jessnacinehub.pythonanywhere.com','127.0.0.1']
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://127.0.0.1:8000",
     "https://jessnacinehub.pythonanywhere.com",
     "https://www.jessnacinehub.pythonanywhere.com",
 ]
