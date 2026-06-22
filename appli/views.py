@@ -11,7 +11,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-
 @csrf_exempt
 def login_view(request):
     if request.method == 'POST':
@@ -39,7 +38,6 @@ def login_view(request):
                 'message': str(e)
             }, status=400)
     return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
-
 
 @csrf_exempt
 def register_view(request):
@@ -75,7 +73,6 @@ def register_view(request):
             }, status=400)
     return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
 
-
 @csrf_exempt
 def subscription_plans_view(request):
     if request.method == 'GET':
@@ -101,7 +98,6 @@ def subscription_plans_view(request):
                 'message': str(e)
             }, status=400)
     return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
-
 
 @csrf_exempt
 def user_subscription_view(request):
@@ -130,9 +126,9 @@ def user_subscription_view(request):
                             'status': subscription.status,
                             'start_date': subscription.start_date.isoformat(),
                             'end_date': subscription.end_date.isoformat(),
-                            'auto_renew': subscription.auto_renew
-                        }
-                    })
+                        'auto_renew': subscription.auto_renew
+                    }
+                })
             else:
                 return JsonResponse({
                     'success': True,
@@ -150,7 +146,6 @@ def user_subscription_view(request):
                 'message': str(e)
             }, status=400)
     return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
-
 
 @csrf_exempt
 def create_subscription_view(request):
@@ -219,7 +214,7 @@ def create_subscription_view(request):
             # Créer une notification pour l'utilisateur que le paiement est en cours
             Notification.objects.create(
                 user=user,
-                notification_type='payment_success',
+                notification_type='payment_pending',
                 title='Paiement en cours',
                 message=f'Votre paiement de {plan.price} $ est en attente de validation par l\'administrateur.',
                 expires_at=timezone.now() + timedelta(days=7)
@@ -228,14 +223,6 @@ def create_subscription_view(request):
             # Activer l'abonnement
             subscription.status = 'active'
             subscription.save()
-
-            Notification.objects.create(
-                user=user,
-                notification_type='payment_success',
-                title='Paiement est validé',
-                message=f'Votre paiement de {plan.price} $ est completé par l\'administrateur.',
-                expires_at=timezone.now() + timedelta(days=7)
-            )
 
             # Créer une notification d'expiration si l'abonnement expire dans moins de 7 jours
             days_until_expiry = (subscription.end_date - timezone.now()).days
@@ -275,7 +262,6 @@ def create_subscription_view(request):
             }, status=400)
     return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
 
-
 @csrf_exempt
 def user_payment_methods_view(request):
     if request.method == 'GET':
@@ -289,7 +275,7 @@ def user_payment_methods_view(request):
 
             user = User.objects.get(username=username)
             payment_methods = PaymentMethod.objects.filter(user=user)
-
+            
             methods_data = []
             for method in payment_methods:
                 methods_data.append({
@@ -301,7 +287,7 @@ def user_payment_methods_view(request):
                     'is_default': method.is_default,
                     'created_at': method.created_at.isoformat()
                 })
-
+            
             return JsonResponse({
                 'success': True,
                 'payment_methods': methods_data
@@ -317,7 +303,6 @@ def user_payment_methods_view(request):
                 'message': str(e)
             }, status=400)
     return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
-
 
 @csrf_exempt
 def add_payment_method_view(request):
@@ -368,7 +353,6 @@ def add_payment_method_view(request):
             }, status=400)
     return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
 
-
 @csrf_exempt
 def subscription_history_view(request):
     if request.method == 'GET':
@@ -383,7 +367,7 @@ def subscription_history_view(request):
 
             user = User.objects.get(username=username)
             subscriptions = Subscription.objects.filter(user=user).order_by('-created_at')[:int(limit)]
-
+            
             history_data = []
             for subscription in subscriptions:
                 payments = Payment.objects.filter(subscription=subscription)
@@ -399,7 +383,7 @@ def subscription_history_view(request):
                         'payment_method': payment.payment_method.get_payment_type_display() if payment.payment_method else None,
                         'created_at': payment.created_at.isoformat()
                     })
-
+                
                 history_data.append({
                     'id': subscription.id,
                     'plan_name': subscription.plan.name,
@@ -416,7 +400,7 @@ def subscription_history_view(request):
                     'created_at': subscription.created_at.isoformat(),
                     'updated_at': subscription.updated_at.isoformat()
                 })
-
+            
             return JsonResponse({
                 'success': True,
                 'subscription_history': history_data
@@ -433,7 +417,6 @@ def subscription_history_view(request):
             }, status=400)
     return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
 
-
 @csrf_exempt
 def notifications_view(request):
     if request.method == 'GET':
@@ -447,7 +430,7 @@ def notifications_view(request):
 
             user = User.objects.get(username=username)
             notifications = Notification.objects.filter(user=user).order_by('-created_at')
-
+            
             notifications_data = []
             for notification in notifications:
                 notifications_data.append({
@@ -460,7 +443,7 @@ def notifications_view(request):
                     'created_at': notification.created_at.isoformat(),
                     'expires_at': notification.expires_at.isoformat() if notification.expires_at else None
                 })
-
+            
             return JsonResponse({
                 'success': True,
                 'notifications': notifications_data
@@ -475,16 +458,16 @@ def notifications_view(request):
                 'success': False,
                 'message': str(e)
             }, status=400)
-
+    
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
             username = data.get('username')
             notification_id = data.get('notification_id')
             action = data.get('action', 'mark_read')  # mark_read, mark_all_read
-
+            
             user = User.objects.get(username=username)
-
+            
             if action == 'mark_read' and notification_id:
                 notification = Notification.objects.get(id=notification_id, user=user)
                 notification.is_read = True
@@ -521,7 +504,6 @@ def notifications_view(request):
             }, status=400)
     return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
 
-
 @csrf_exempt
 def check_subscription_expiry_view(request):
     if request.method == 'GET':
@@ -535,7 +517,7 @@ def check_subscription_expiry_view(request):
 
             user = User.objects.get(username=username)
             subscription = Subscription.objects.filter(user=user, status='active').first()
-
+            
             if not subscription:
                 return JsonResponse({
                     'success': True,
@@ -543,10 +525,10 @@ def check_subscription_expiry_view(request):
                     'expires_soon': False,
                     'days_remaining': 0
                 })
-
+            
             days_remaining = (subscription.end_date - timezone.now()).days
             expires_soon = days_remaining <= 7 and days_remaining > 0
-
+            
             return JsonResponse({
                 'success': True,
                 'has_subscription': True,
@@ -567,7 +549,6 @@ def check_subscription_expiry_view(request):
             }, status=400)
     return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
 
-
 @csrf_exempt
 def payment_webhook_view(request):
     """
@@ -577,13 +558,13 @@ def payment_webhook_view(request):
         try:
             data = json.loads(request.body)
             logger.info(f"Webhook reçu: {data}")
-
+            
             # Vérifier le statut du paiement
             status = data.get('status')
             transaction_id = data.get('id')
             metadata = data.get('metadata', {})
             reference = metadata.get('reference')
-
+            
             if status == 'success':
                 # Trouver le paiement correspondant
                 try:
@@ -593,12 +574,12 @@ def payment_webhook_view(request):
                         payment.status = 'completed'
                         payment.payment_date = timezone.now()
                         payment.save()
-
+                        
                         # Activer l'abonnement
                         subscription = payment.subscription
                         subscription.status = 'active'
                         subscription.save()
-
+                        
                         # Créer une notification de paiement réussi
                         Notification.objects.create(
                             user=subscription.user,
@@ -607,13 +588,13 @@ def payment_webhook_view(request):
                             message=f'Votre paiement {transaction_id} a été validé avec succès.',
                             expires_at=timezone.now() + timedelta(days=2)
                         )
-
+                        
                         logger.info(f"Paiement {transaction_id} validé avec succès")
                         return JsonResponse({'success': True, 'message': 'Paiement validé'})
                 except Payment.DoesNotExist:
                     logger.error(f"Paiement {transaction_id} non trouvé")
                     return JsonResponse({'success': False, 'message': 'Paiement non trouvé'}, status=404)
-
+            
             elif status == 'failed':
                 # Mettre à jour le statut du paiement comme échoué
                 try:
@@ -621,13 +602,13 @@ def payment_webhook_view(request):
                     if payment:
                         payment.status = 'failed'
                         payment.save()
-
+                        
                         logger.info(f"Paiement {transaction_id} échoué")
                         return JsonResponse({'success': True, 'message': 'Paiement échoué'})
                 except Payment.DoesNotExist:
                     logger.error(f"Paiement {transaction_id} non trouvé")
                     return JsonResponse({'success': False, 'message': 'Paiement non trouvé'}, status=404)
-
+            
             return JsonResponse({'success': True, 'message': 'Webhook reçu'})
 
         except Exception as e:
@@ -635,7 +616,6 @@ def payment_webhook_view(request):
             return JsonResponse({'success': False, 'message': str(e)}, status=400)
 
     return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
-
 
 @csrf_exempt
 def user_profile_view(request):
@@ -671,7 +651,6 @@ def user_profile_view(request):
                 'message': str(e)
             }, status=400)
     return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
-
 
 @csrf_exempt
 def change_password_view(request):

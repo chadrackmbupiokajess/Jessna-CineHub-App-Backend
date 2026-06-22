@@ -5,6 +5,8 @@ from django.utils import timezone
 class Notification(models.Model):
     NOTIFICATION_TYPES = [
         ('payment_success', 'Paiement réussi'),
+        ('payment_pending', 'Paiement en cours'),
+        ('payment_failed', 'Paiement échoué'),
         ('subscription_expiring', 'Abonnement expire bientôt'),
         ('subscription_expired', 'Abonnement expiré'),
         ('subscription_renewed', 'Abonnement renouvelé'),
