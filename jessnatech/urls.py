@@ -25,4 +25,12 @@ urlpatterns = [
     path('api/subscription-plans/', views.subscription_plans_view, name='subscription-plans'),
     path('api/user-subscription/', views.user_subscription_view, name='user-subscription'),
     path('api/create-subscription/', views.create_subscription_view, name='create-subscription'),
+    path('api/payment-methods/', views.user_payment_methods_view, name='payment-methods'),
+    path('api/add-payment-method/', views.add_payment_method_view, name='add-payment-method'),
+    path('api/subscription-history/', views.subscription_history_view, name='subscription-history'),
+    path('api/notifications/', views.notifications_view, name='notifications'),
+    path('api/check-subscription-expiry/', views.check_subscription_expiry_view, name='check-subscription-expiry'),
+    path('api/payment-webhook/', views.payment_webhook_view, name='payment-webhook'),
+    path('api/user-profile/', views.user_profile_view, name='user-profile'),
+    path('api/change-password/', views.change_password_view, name='change-password'),
 ]

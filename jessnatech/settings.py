@@ -23,13 +23,15 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-k#x9_b@=3-1lq2krs)pinv*8t_@e-ns$5u6s1+q1zd3+_=7r!p'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = ['jessnacinehub.pythonanywhere.com', 'www.jessnacinehub.pythonanywhere.com']
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "https://jessnacinehub.pythonanywhere.com",
+    "https://www.jessnacinehub.pythonanywhere.com",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
