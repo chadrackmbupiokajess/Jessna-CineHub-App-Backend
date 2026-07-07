@@ -34,6 +34,7 @@ class UserProfile(models.Model):
     avatar_initial = models.CharField(max_length=2, blank=True)
     avatar_color = models.CharField(max_length=7, default='#ff2d55')
     bio = models.TextField(blank=True)
+    phone = models.CharField(max_length=20, blank=True)
     favorite_count = models.IntegerField(default=0)
     recent_watch_count = models.IntegerField(default=0)
     downloads_count = models.IntegerField(default=0)

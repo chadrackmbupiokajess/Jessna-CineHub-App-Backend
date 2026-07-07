@@ -36,4 +36,5 @@ urlpatterns = [
     path('api/watch-history/', views.get_watch_history, name='watch-history'),
     path('api/add-to-watch-history/', views.add_to_watch_history, name='add-to-watch-history'),
     path('api/payment-history/', views.payment_history_view, name='payment-history'),
+    path('api/update-phone/', views.update_phone_view, name='update-phone'),
 ]

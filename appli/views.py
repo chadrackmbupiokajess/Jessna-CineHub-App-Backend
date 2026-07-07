@@ -896,6 +896,10 @@ def payment_history_view(request):
             
             payment_data = []
             for payment in payments:
+                payment_method_name = 'Non spécifié'
+                if payment.payment_method:
+                    payment_method_name = payment.payment_method.get_payment_type_display()
+                
                 payment_data.append({
                     'id': payment.id,
                     'amount': str(payment.amount),
@@ -904,6 +908,7 @@ def payment_history_view(request):
                     'payment_date': payment.payment_date.isoformat() if payment.payment_date else None,
                     'created_at': payment.created_at.isoformat(),
                     'plan_name': payment.subscription.plan.name if payment.subscription.plan else 'Inconnu',
+                    'payment_method': payment_method_name,
                 })
             
             return JsonResponse({
@@ -912,6 +917,39 @@ def payment_history_view(request):
             })
         except Exception as e:
             logger.error(f"Erreur récupération historique paiement: {e}")
+            return JsonResponse({
+                'success': False,
+                'message': str(e)
+            }, status=400)
+    return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
+
+@csrf_exempt
+def update_phone_view(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            username = data.get('username')
+            phone = data.get('phone')
+            
+            try:
+                user = User.objects.get(username=username)
+            except User.DoesNotExist:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'Utilisateur non trouvé'
+                }, status=404)
+            
+            # Mettre à jour le numéro de téléphone dans le profil
+            profile, created = UserProfile.objects.get_or_create(user=user)
+            profile.phone = phone
+            profile.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Numéro de téléphone mis à jour'
+            })
+        except Exception as e:
+            logger.error(f"Erreur mise à jour téléphone: {e}")
             return JsonResponse({
                 'success': False,
                 'message': str(e)
