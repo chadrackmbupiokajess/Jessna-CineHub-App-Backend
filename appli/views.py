@@ -5,7 +5,7 @@ from django.contrib.auth import authenticate, login
 from django.contrib.auth.models import User
 from django.utils import timezone
 from datetime import timedelta
-from .models import SubscriptionPlan, PaymentMethod, Subscription, Payment, Notification, UserProfile
+from .models import SubscriptionPlan, PaymentMethod, Subscription, Payment, Notification, UserProfile, WatchHistory
 import json
 import logging
 
@@ -756,6 +756,120 @@ def change_password_view(request):
                 'message': 'Utilisateur non trouvé'
             }, status=404)
         except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'message': str(e)
+            }, status=400)
+    return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
+
+@csrf_exempt
+def add_to_watch_history(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            username = data.get('username')
+            
+            try:
+                user = User.objects.get(username=username)
+            except User.DoesNotExist:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'Utilisateur non trouvé'
+                }, status=404)
+            
+            # Créer ou mettre à jour l'historique
+            movie_slug = data.get('movie_slug')
+            season = data.get('season')
+            episode = data.get('episode')
+            
+            # Pour les séries, on vérifie si c'est le même épisode
+            if season and episode:
+                existing = WatchHistory.objects.filter(
+                    user=user,
+                    movie_slug=movie_slug,
+                    season=season,
+                    episode=episode
+                ).first()
+            else:
+                # Pour les films, on vérifie si c'est le même film
+                existing = WatchHistory.objects.filter(
+                    user=user,
+                    movie_slug=movie_slug,
+                    season__isnull=True,
+                    episode__isnull=True
+                ).first()
+            
+            if existing:
+                # Mettre à jour l'entrée existante
+                existing.progress_percentage = data.get('progress_percentage', 0)
+                existing.duration_watched = data.get('duration_watched', 0)
+                existing.watched_at = timezone.now()
+                existing.save()
+            else:
+                # Créer une nouvelle entrée
+                WatchHistory.objects.create(
+                    user=user,
+                    movie_title=data.get('movie_title'),
+                    movie_slug=movie_slug,
+                    movie_poster=data.get('movie_poster', ''),
+                    content_type=data.get('content_type', 'movie'),
+                    season=season,
+                    episode=episode,
+                    episode_title=data.get('episode_title', ''),
+                    progress_percentage=data.get('progress_percentage', 0),
+                    duration_watched=data.get('duration_watched', 0)
+                )
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Historique mis à jour'
+            })
+        except Exception as e:
+            logger.error(f"Erreur ajout historique: {e}")
+            return JsonResponse({
+                'success': False,
+                'message': str(e)
+            }, status=400)
+    return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
+
+@csrf_exempt
+def get_watch_history(request):
+    if request.method == 'GET':
+        try:
+            username = request.GET.get('username')
+            
+            try:
+                user = User.objects.get(username=username)
+            except User.DoesNotExist:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'Utilisateur non trouvé'
+                }, status=404)
+            
+            history = WatchHistory.objects.filter(user=user)[:50]  # Limiter à 50 entrées
+            
+            history_data = []
+            for item in history:
+                history_data.append({
+                    'id': item.id,
+                    'movie_title': item.movie_title,
+                    'movie_slug': item.movie_slug,
+                    'movie_poster': item.movie_poster,
+                    'content_type': item.content_type,
+                    'season': item.season,
+                    'episode': item.episode,
+                    'episode_title': item.episode_title,
+                    'watched_at': item.watched_at.isoformat(),
+                    'progress_percentage': item.progress_percentage,
+                    'duration_watched': item.duration_watched
+                })
+            
+            return JsonResponse({
+                'success': True,
+                'history': history_data
+            })
+        except Exception as e:
+            logger.error(f"Erreur récupération historique: {e}")
             return JsonResponse({
                 'success': False,
                 'message': str(e)

@@ -127,4 +127,23 @@ class Payment(models.Model):
     def __str__(self):
         return f"Payment {self.id} - {self.amount}"
 
+class WatchHistory(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='watch_history')
+    movie_title = models.CharField(max_length=255)
+    movie_slug = models.CharField(max_length=255)
+    movie_poster = models.URLField(blank=True)
+    content_type = models.CharField(max_length=20, choices=[('movie', 'Film'), ('tv', 'Série')])
+    season = models.IntegerField(null=True, blank=True)
+    episode = models.IntegerField(null=True, blank=True)
+    episode_title = models.CharField(max_length=255, blank=True)
+    watched_at = models.DateTimeField(auto_now_add=True)
+    progress_percentage = models.IntegerField(default=0, help_text="Pourcentage de visionnage")
+    duration_watched = models.IntegerField(default=0, help_text="Durée visionnée en secondes")
+
+    class Meta:
+        ordering = ['-watched_at']
+
+    def __str__(self):
+        return f"{self.user.username} - {self.movie_title}"
+
 # Create your models here.

@@ -33,4 +33,6 @@ urlpatterns = [
     path('api/payment-webhook/', views.payment_webhook_view, name='payment-webhook'),
     path('api/user-profile/', views.user_profile_view, name='user-profile'),
     path('api/change-password/', views.change_password_view, name='change-password'),
+    path('api/watch-history/', views.get_watch_history, name='watch-history'),
+    path('api/add-to-watch-history/', views.add_to_watch_history, name='add-to-watch-history'),
 ]
