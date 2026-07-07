@@ -1,7 +1,7 @@
 from django.contrib import admin, messages
 from django.utils import timezone
 from datetime import timedelta
-from .models import SubscriptionPlan, PaymentMethod, Subscription, Payment, Notification
+from .models import SubscriptionPlan, PaymentMethod, Subscription, Payment, Notification, UserProfile
 
 @admin.register(SubscriptionPlan)
 class SubscriptionPlanAdmin(admin.ModelAdmin):
@@ -28,6 +28,13 @@ class SubscriptionAdmin(admin.ModelAdmin):
     def get_max_screens_display(self, obj):
         return obj.get_max_screens()
     get_max_screens_display.short_description = 'Écrans max'
+
+@admin.register(UserProfile)
+class UserProfileAdmin(admin.ModelAdmin):
+    list_display = ['user', 'display_name', 'avatar_initial', 'avatar_color', 'favorite_count', 'recent_watch_count', 'downloads_count', 'created_at']
+    list_filter = ['created_at']
+    search_fields = ['user__username', 'display_name', 'bio']
+    readonly_fields = ['created_at', 'updated_at']
 
 @admin.register(Payment)
 class PaymentAdmin(admin.ModelAdmin):
