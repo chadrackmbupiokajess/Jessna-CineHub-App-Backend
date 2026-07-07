@@ -5,7 +5,7 @@ from django.contrib.auth import authenticate, login
 from django.contrib.auth.models import User
 from django.utils import timezone
 from datetime import timedelta
-from .models import SubscriptionPlan, PaymentMethod, Subscription, Payment, Notification
+from .models import SubscriptionPlan, PaymentMethod, Subscription, Payment, Notification, UserProfile
 import json
 import logging
 
@@ -75,6 +75,14 @@ def register_view(request):
                 }, status=400)
 
             user = User.objects.create_user(username=username, email=email, password=password)
+            profile, _ = UserProfile.objects.get_or_create(
+                user=user,
+                defaults={
+                    'display_name': username,
+                    'avatar_initial': username[0].upper() if username else 'U',
+                    'bio': f'Bienvenue sur Jessna CinéHub, {username}.'
+                }
+            )
             return JsonResponse({
                 'success': True,
                 'message': 'Inscription réussie',
@@ -643,6 +651,34 @@ def user_profile_view(request):
                 }, status=400)
 
             user = User.objects.get(username=username)
+            profile, _ = UserProfile.objects.get_or_create(
+                user=user,
+                defaults={
+                    'display_name': user.first_name or user.last_name or user.username,
+                    'avatar_initial': (user.first_name or user.last_name or user.username)[0].upper() if (user.first_name or user.last_name or user.username) else 'U',
+                    'bio': f'Bienvenue sur Jessna CinéHub, {user.username}.'
+                }
+            )
+
+            if not profile.display_name:
+                profile.display_name = user.first_name or user.last_name or user.username
+            if not profile.avatar_initial:
+                profile.avatar_initial = (profile.display_name or user.username)[0].upper()
+            profile.save()
+
+            subscription = Subscription.objects.filter(user=user).order_by('-created_at').first()
+            if subscription and subscription.is_valid():
+                plan_name = subscription.plan.name
+                plan_status = subscription.status
+                has_subscription = True
+                end_date = subscription.end_date.isoformat()
+                auto_renew = subscription.auto_renew
+            else:
+                plan_name = 'Découverte'
+                plan_status = 'inactive'
+                has_subscription = False
+                end_date = None
+                auto_renew = False
 
             return JsonResponse({
                 'success': True,
@@ -651,7 +687,23 @@ def user_profile_view(request):
                     'email': user.email,
                     'first_name': user.first_name,
                     'last_name': user.last_name,
-                    'date_joined': user.date_joined.isoformat()
+                    'display_name': profile.display_name,
+                    'avatar_initial': profile.avatar_initial,
+                    'avatar_color': profile.avatar_color,
+                    'bio': profile.bio,
+                    'favorite_count': profile.favorite_count,
+                    'recent_watch_count': profile.recent_watch_count,
+                    'downloads_count': profile.downloads_count,
+                    'member_since': user.date_joined.strftime('%m/%Y'),
+                    'date_joined': user.date_joined.isoformat(),
+                    'subscription': {
+                        'has_subscription': has_subscription,
+                        'plan_name': plan_name,
+                        'status': plan_status,
+                        'status_display': 'Actif' if has_subscription else 'Aucun abonnement',
+                        'end_date': end_date,
+                        'auto_renew': auto_renew,
+                    }
                 }
             })
         except User.DoesNotExist:
