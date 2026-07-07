@@ -875,3 +875,45 @@ def get_watch_history(request):
                 'message': str(e)
             }, status=400)
     return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
+
+@csrf_exempt
+def payment_history_view(request):
+    if request.method == 'GET':
+        try:
+            username = request.GET.get('username')
+            
+            try:
+                user = User.objects.get(username=username)
+            except User.DoesNotExist:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'Utilisateur non trouvé'
+                }, status=404)
+            
+            # Récupérer les paiements via les abonnements de l'utilisateur
+            subscriptions = Subscription.objects.filter(user=user)
+            payments = Payment.objects.filter(subscription__in=subscriptions).order_by('-created_at')[:20]
+            
+            payment_data = []
+            for payment in payments:
+                payment_data.append({
+                    'id': payment.id,
+                    'amount': str(payment.amount),
+                    'status': payment.status,
+                    'transaction_id': payment.transaction_id,
+                    'payment_date': payment.payment_date.isoformat() if payment.payment_date else None,
+                    'created_at': payment.created_at.isoformat(),
+                    'plan_name': payment.subscription.plan.name if payment.subscription.plan else 'Inconnu',
+                })
+            
+            return JsonResponse({
+                'success': True,
+                'payments': payment_data
+            })
+        except Exception as e:
+            logger.error(f"Erreur récupération historique paiement: {e}")
+            return JsonResponse({
+                'success': False,
+                'message': str(e)
+            }, status=400)
+    return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
