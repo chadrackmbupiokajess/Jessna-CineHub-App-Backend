@@ -23,6 +23,7 @@ urlpatterns = [
     path('api/login/', views.login_view, name='login'),
     path('api/register/', views.register_view, name='register'),
     path('api/subscription-plans/', views.subscription_plans_view, name='subscription-plans'),
+    path('api/app-update/', views.app_update_view, name='app-update'),
     path('api/user-subscription/', views.user_subscription_view, name='user-subscription'),
     path('api/create-subscription/', views.create_subscription_view, name='create-subscription'),
     path('api/payment-methods/', views.user_payment_methods_view, name='payment-methods'),

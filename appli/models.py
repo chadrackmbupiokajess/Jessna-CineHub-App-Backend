@@ -44,6 +44,26 @@ class UserProfile(models.Model):
     def __str__(self):
         return f"{self.user.username} - {self.display_name or self.user.username}"
 
+class AppUpdate(models.Model):
+    version = models.CharField(max_length=50, help_text="Version APK affichee aux utilisateurs")
+    apk_url = models.URLField(help_text="Lien direct de telechargement de l'APK")
+    message = models.TextField(default="Une nouvelle version de l'application est disponible.")
+    is_active = models.BooleanField(default=False, help_text="Activer pour afficher la notification dans l'application mobile")
+    force_update = models.BooleanField(default=False, help_text="Indique si la mise a jour est obligatoire")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.is_active:
+            AppUpdate.objects.exclude(pk=self.pk).update(is_active=False)
+
+    def __str__(self):
+        return f"APK {self.version}"
+
 class SubscriptionPlan(models.Model):
     name = models.CharField(max_length=100)
     description = models.TextField()

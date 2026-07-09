@@ -5,7 +5,7 @@ from django.contrib.auth import authenticate, login
 from django.contrib.auth.models import User
 from django.utils import timezone
 from datetime import timedelta
-from .models import SubscriptionPlan, PaymentMethod, Subscription, Payment, Notification, UserProfile, WatchHistory
+from .models import AppUpdate, SubscriptionPlan, PaymentMethod, Subscription, Payment, Notification, UserProfile, WatchHistory
 import json
 import logging
 
@@ -120,6 +120,39 @@ def subscription_plans_view(request):
                 'message': str(e)
             }, status=400)
     return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
+
+@csrf_exempt
+def app_update_view(request):
+    if request.method == 'GET':
+        try:
+            update = AppUpdate.objects.filter(is_active=True).order_by('-updated_at').first()
+            if not update:
+                return JsonResponse({
+                    'success': True,
+                    'active': False,
+                    'update_available': False,
+                    'message': 'Aucune mise a jour active'
+                })
+
+            return JsonResponse({
+                'success': True,
+                'active': True,
+                'is_active': True,
+                'update_available': True,
+                'version': update.version,
+                'latest_version': update.version,
+                'apk_url': update.apk_url,
+                'download_url': update.apk_url,
+                'message': update.message,
+                'force_update': update.force_update,
+                'updated_at': update.updated_at.isoformat()
+            })
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'message': str(e)
+            }, status=400)
+    return JsonResponse({'success': False, 'message': 'Methode non autorisee'}, status=405)
 
 @csrf_exempt
 def user_subscription_view(request):

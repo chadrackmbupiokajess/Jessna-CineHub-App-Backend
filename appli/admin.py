@@ -1,7 +1,7 @@
 from django.contrib import admin, messages
 from django.utils import timezone
 from datetime import timedelta
-from .models import SubscriptionPlan, PaymentMethod, Subscription, Payment, Notification, UserProfile
+from .models import AppUpdate, SubscriptionPlan, PaymentMethod, Subscription, Payment, Notification, UserProfile
 
 @admin.register(SubscriptionPlan)
 class SubscriptionPlanAdmin(admin.ModelAdmin):
@@ -34,6 +34,13 @@ class UserProfileAdmin(admin.ModelAdmin):
     list_display = ['user', 'display_name', 'avatar_initial', 'avatar_color', 'favorite_count', 'recent_watch_count', 'downloads_count', 'created_at']
     list_filter = ['created_at']
     search_fields = ['user__username', 'display_name', 'bio']
+    readonly_fields = ['created_at', 'updated_at']
+
+@admin.register(AppUpdate)
+class AppUpdateAdmin(admin.ModelAdmin):
+    list_display = ['version', 'is_active', 'force_update', 'updated_at']
+    list_filter = ['is_active', 'force_update', 'created_at']
+    search_fields = ['version', 'message', 'apk_url']
     readonly_fields = ['created_at', 'updated_at']
 
 @admin.register(Payment)
