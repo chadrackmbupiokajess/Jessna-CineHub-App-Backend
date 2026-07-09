@@ -52,6 +52,35 @@ class PaymentAdmin(admin.ModelAdmin):
     date_hierarchy = 'payment_date'
     actions = ['validate_payment', 'reject_payment']
 
+    def save_model(self, request, obj, form, change):
+        status_changed_to_completed = False
+        if change and obj.pk:
+            previous_payment = Payment.objects.filter(pk=obj.pk).only('status').first()
+            status_changed_to_completed = (
+                previous_payment is not None
+                and previous_payment.status != 'completed'
+                and obj.status == 'completed'
+            )
+
+        super().save_model(request, obj, form, change)
+
+        if status_changed_to_completed:
+            if not obj.payment_date:
+                obj.payment_date = timezone.now()
+                obj.save(update_fields=['payment_date', 'updated_at'])
+
+            subscription = obj.subscription
+            subscription.status = 'active'
+            subscription.save(update_fields=['status', 'updated_at'])
+
+            Notification.objects.create(
+                user=subscription.user,
+                notification_type='payment_success',
+                title='Paiement valide',
+                message=f'Votre abonnement {subscription.plan.name} a ete active avec succes. Merci pour votre paiement de {obj.amount} $!',
+                expires_at=timezone.now() + timedelta(days=7)
+            )
+
     def validate_payment(self, request, queryset):
         updated = 0
         for payment in queryset.filter(status='pending'):
