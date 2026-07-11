@@ -167,4 +167,28 @@ class WatchHistory(models.Model):
     def __str__(self):
         return f"{self.user.username} - {self.movie_title}"
 
+class AppContent(models.Model):
+    CONTENT_TYPES = [
+        ('help', 'Aide'),
+        ('contact', 'Nous contacter'),
+        ('about', 'À propos de l\'application'),
+        ('account', 'Compte'),
+    ]
+    
+    content_type = models.CharField(max_length=20, choices=CONTENT_TYPES, unique=True)
+    title = models.CharField(max_length=200)
+    subtitle = models.CharField(max_length=300, blank=True)
+    content = models.TextField(help_text="Contenu détaillé de la page")
+    contact_email = models.EmailField(blank=True, help_text="Email de contact pour la page Nous contacter")
+    contact_phone = models.CharField(max_length=20, blank=True, help_text="Téléphone de contact")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['content_type']
+
+    def __str__(self):
+        return f"{self.get_content_type_display()} - {self.title}"
+
 # Create your models here.

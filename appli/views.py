@@ -5,7 +5,7 @@ from django.contrib.auth import authenticate, login
 from django.contrib.auth.models import User
 from django.utils import timezone
 from datetime import timedelta
-from .models import AppUpdate, SubscriptionPlan, PaymentMethod, Subscription, Payment, Notification, UserProfile, WatchHistory
+from .models import AppUpdate, SubscriptionPlan, PaymentMethod, Subscription, Payment, Notification, UserProfile, WatchHistory, AppContent
 import json
 import logging
 
@@ -724,6 +724,7 @@ def user_profile_view(request):
                     'avatar_initial': profile.avatar_initial,
                     'avatar_color': profile.avatar_color,
                     'bio': profile.bio,
+                    'phone': profile.phone,
                     'favorite_count': profile.favorite_count,
                     'recent_watch_count': profile.recent_watch_count,
                     'downloads_count': profile.downloads_count,
@@ -983,6 +984,59 @@ def update_phone_view(request):
             })
         except Exception as e:
             logger.error(f"Erreur mise à jour téléphone: {e}")
+            return JsonResponse({
+                'success': False,
+                'message': str(e)
+            }, status=400)
+    return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
+@csrf_exempt
+def app_content_view(request):
+    if request.method == 'GET':
+        try:
+            content_type = request.GET.get('content_type')
+            
+            if content_type:
+                # Récupérer un contenu spécifique
+                try:
+                    content = AppContent.objects.get(content_type=content_type, is_active=True)
+                    return JsonResponse({
+                        'success': True,
+                        'content': {
+                            'content_type': content.content_type,
+                            'content_type_display': content.get_content_type_display(),
+                            'title': content.title,
+                            'subtitle': content.subtitle,
+                            'content': content.content,
+                            'contact_email': content.contact_email,
+                            'contact_phone': content.contact_phone,
+                        }
+                    })
+                except AppContent.DoesNotExist:
+                    return JsonResponse({
+                        'success': False,
+                        'message': 'Contenu non trouvé'
+                    }, status=404)
+            else:
+                # Récupérer tous les contenus actifs
+                contents = AppContent.objects.filter(is_active=True)
+                contents_data = []
+                for content in contents:
+                    contents_data.append({
+                        'content_type': content.content_type,
+                        'content_type_display': content.get_content_type_display(),
+                        'title': content.title,
+                        'subtitle': content.subtitle,
+                        'content': content.content,
+                        'contact_email': content.contact_email,
+                        'contact_phone': content.contact_phone,
+                    })
+                
+                return JsonResponse({
+                    'success': True,
+                    'contents': contents_data
+                })
+        except Exception as e:
+            logger.error(f"Erreur récupération contenu: {e}")
             return JsonResponse({
                 'success': False,
                 'message': str(e)

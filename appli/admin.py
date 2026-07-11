@@ -1,7 +1,7 @@
 from django.contrib import admin, messages
 from django.utils import timezone
 from datetime import timedelta
-from .models import AppUpdate, SubscriptionPlan, PaymentMethod, Subscription, Payment, Notification, UserProfile
+from .models import AppUpdate, SubscriptionPlan, PaymentMethod, Subscription, Payment, Notification, UserProfile, AppContent
 
 @admin.register(SubscriptionPlan)
 class SubscriptionPlanAdmin(admin.ModelAdmin):
@@ -150,3 +150,11 @@ class PaymentAdmin(admin.ModelAdmin):
     reject_payment.short_description = 'Rejeter les paiements sélectionnés'
 
 # Register your models here.
+
+
+@admin.register(AppContent)
+class AppContentAdmin(admin.ModelAdmin):
+    list_display = ['content_type', 'title', 'subtitle', 'is_active', 'updated_at']
+    list_filter = ['content_type', 'is_active', 'updated_at']
+    search_fields = ['title', 'subtitle', 'content']
+    readonly_fields = ['created_at', 'updated_at']
