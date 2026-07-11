@@ -276,9 +276,6 @@ def create_subscription_view(request):
             )
 
             # Activer l'abonnement
-            subscription.status = 'active'
-            subscription.save()
-
             # Créer une notification d'expiration si l'abonnement expire dans moins de 7 jours
             days_until_expiry = (subscription.end_date - timezone.now()).days
             if days_until_expiry <= 7:
@@ -700,7 +697,8 @@ def user_profile_view(request):
             profile.save()
 
             subscription = Subscription.objects.filter(user=user).order_by('-created_at').first()
-            if subscription and subscription.is_valid():
+            completed_payment = Payment.objects.filter(subscription=subscription, status='completed').exists() if subscription else False
+            if subscription and subscription.is_valid() and completed_payment:
                 plan_name = subscription.plan.name
                 plan_status = subscription.status
                 has_subscription = True
