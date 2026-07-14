@@ -1056,7 +1056,7 @@ def update_profile_view(request):
             if not username:
                 return JsonResponse({
                     'success': False,
-                    'message': 'Nom d\\'utilisateur requis'
+                    'message': 'Nom d utilisateur requis'
                 }, status=400)
 
             user = User.objects.get(username=username)
@@ -1078,14 +1078,14 @@ def update_profile_view(request):
                 if User.objects.filter(email=email).exclude(username=username).exists():
                     return JsonResponse({
                         'success': False,
-                        'message': 'Cet email est déjà utilisé'
+                        'message': 'Cet email est deja utilise'
                     }, status=400)
                 user.email = email
                 user.save()
 
             return JsonResponse({
                 'success': True,
-                'message': 'Profil mis à jour avec succès',
+                'message': 'Profil mis a jour avec succes',
                 'profile': {
                     'username': user.username,
                     'email': user.email,
@@ -1098,12 +1098,12 @@ def update_profile_view(request):
         except User.DoesNotExist:
             return JsonResponse({
                 'success': False,
-                'message': 'Utilisateur non trouvé'
+                'message': 'Utilisateur non trouve'
             }, status=404)
         except Exception as e:
-            logger.error(f'Erreur mise à jour profil: {e}')
+            logger.error(f'Erreur mise a jour profil: {e}')
             return JsonResponse({
                 'success': False,
                 'message': str(e)
             }, status=400)
-    return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
+    return JsonResponse({'success': False, 'message': 'Methode non autorisee'}, status=405)
