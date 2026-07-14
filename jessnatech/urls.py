@@ -16,6 +16,8 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
+from django.conf import settings
+from django.conf.urls.static import static
 from appli import views
 
 urlpatterns = [
@@ -41,4 +43,7 @@ urlpatterns = [
     path('api/update-profile/', views.update_profile_view, name='update-profile'),
     path('api/app-content/', views.app_content_view, name='app-content'),
 ]
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 

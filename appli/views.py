@@ -134,6 +134,16 @@ def app_update_view(request):
                     'message': 'Aucune mise a jour active'
                 })
 
+            download_url = update.get_download_url(request)
+            if not download_url:
+                return JsonResponse({
+                    'success': True,
+                    'active': False,
+                    'is_active': False,
+                    'update_available': False,
+                    'message': 'Aucun fichier APK disponible'
+                })
+
             return JsonResponse({
                 'success': True,
                 'active': True,
@@ -141,8 +151,8 @@ def app_update_view(request):
                 'update_available': True,
                 'version': update.version,
                 'latest_version': update.version,
-                'apk_url': update.apk_url,
-                'download_url': update.apk_url,
+                'apk_url': download_url,
+                'download_url': download_url,
                 'message': update.message,
                 'force_update': update.force_update,
                 'updated_at': update.updated_at.isoformat()

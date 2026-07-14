@@ -46,7 +46,8 @@ class UserProfile(models.Model):
 
 class AppUpdate(models.Model):
     version = models.CharField(max_length=50, help_text="Version APK affichee aux utilisateurs")
-    apk_url = models.URLField(help_text="Lien direct de telechargement de l'APK")
+    apk_file = models.FileField(upload_to='app_updates/', blank=True, null=True, help_text="Importer le fichier APK de la nouvelle version")
+    apk_url = models.URLField(blank=True, help_text="Ancien lien direct de telechargement de l'APK (optionnel)")
     message = models.TextField(default="Une nouvelle version de l'application est disponible.")
     is_active = models.BooleanField(default=False, help_text="Activer pour afficher la notification dans l'application mobile")
     force_update = models.BooleanField(default=False, help_text="Indique si la mise a jour est obligatoire")
@@ -63,6 +64,12 @@ class AppUpdate(models.Model):
 
     def __str__(self):
         return f"APK {self.version}"
+
+    def get_download_url(self, request=None):
+        if self.apk_file:
+            url = self.apk_file.url
+            return request.build_absolute_uri(url) if request else url
+        return self.apk_url
 
 class SubscriptionPlan(models.Model):
     name = models.CharField(max_length=100)

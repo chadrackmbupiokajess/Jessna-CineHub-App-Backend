@@ -38,9 +38,9 @@ class UserProfileAdmin(admin.ModelAdmin):
 
 @admin.register(AppUpdate)
 class AppUpdateAdmin(admin.ModelAdmin):
-    list_display = ['version', 'is_active', 'force_update', 'updated_at']
+    list_display = ['version', 'apk_file', 'is_active', 'force_update', 'updated_at']
     list_filter = ['is_active', 'force_update', 'created_at']
-    search_fields = ['version', 'message', 'apk_url']
+    search_fields = ['version', 'message', 'apk_file', 'apk_url']
     readonly_fields = ['created_at', 'updated_at']
 
 @admin.register(Payment)
