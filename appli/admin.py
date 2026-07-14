@@ -1,7 +1,47 @@
+import os
+
+from django import forms
+from django.conf import settings
 from django.contrib import admin, messages
 from django.utils import timezone
 from datetime import timedelta
 from .models import AppUpdate, SubscriptionPlan, PaymentMethod, Subscription, Payment, Notification, UserProfile, AppContent
+
+
+class AppUpdateAdminForm(forms.ModelForm):
+    server_apk_file = forms.ChoiceField(
+        label='APK deja present sur le serveur',
+        required=False,
+        choices=[],
+        help_text="Pour eviter l'erreur 413, deposez l'APK dans media/app_updates/ puis selectionnez-le ici.",
+    )
+
+    class Meta:
+        model = AppUpdate
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        app_updates_dir = os.path.join(settings.MEDIA_ROOT, 'app_updates')
+        choices = [('', 'Aucun fichier serveur')]
+        if os.path.isdir(app_updates_dir):
+            for filename in sorted(os.listdir(app_updates_dir), reverse=True):
+                if filename.lower().endswith('.apk'):
+                    choices.append((f'app_updates/{filename}', filename))
+        self.fields['server_apk_file'].choices = choices
+        if self.instance and self.instance.apk_file:
+            self.fields['server_apk_file'].initial = self.instance.apk_file.name
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        server_apk_file = self.cleaned_data.get('server_apk_file')
+        uploaded_apk = self.cleaned_data.get('apk_file')
+        if server_apk_file and not uploaded_apk:
+            instance.apk_file.name = server_apk_file
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance
 
 @admin.register(SubscriptionPlan)
 class SubscriptionPlanAdmin(admin.ModelAdmin):
@@ -38,6 +78,7 @@ class UserProfileAdmin(admin.ModelAdmin):
 
 @admin.register(AppUpdate)
 class AppUpdateAdmin(admin.ModelAdmin):
+    form = AppUpdateAdminForm
     list_display = ['version', 'apk_file', 'is_active', 'force_update', 'updated_at']
     list_filter = ['is_active', 'force_update', 'created_at']
     search_fields = ['version', 'message', 'apk_file', 'apk_url']
