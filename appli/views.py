@@ -756,10 +756,10 @@ def change_password_view(request):
         try:
             data = json.loads(request.body)
             username = data.get('username')
-            old_password = data.get('old_password')
+            current_password = data.get('current_password')
             new_password = data.get('new_password')
 
-            if not username or not old_password or not new_password:
+            if not username or not current_password or not new_password:
                 return JsonResponse({
                     'success': False,
                     'message': 'Tous les champs sont requis'
@@ -768,10 +768,10 @@ def change_password_view(request):
             user = User.objects.get(username=username)
 
             # Vérifier l'ancien mot de passe
-            if not user.check_password(old_password):
+            if not user.check_password(current_password):
                 return JsonResponse({
                     'success': False,
-                    'message': 'Ancien mot de passe incorrect'
+                    'message': 'Mot de passe actuel incorrect'
                 }, status=400)
 
             # Changer le mot de passe
