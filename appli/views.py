@@ -15,6 +15,7 @@ import json
 import logging
 import secrets
 import requests
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -1251,6 +1252,108 @@ def update_profile_view(request):
                 'message': str(e)
             }, status=400)
     return JsonResponse({'success': False, 'message': 'Methode non autorisee'}, status=405)
+
+@csrf_exempt
+def cinetpay_initiate_payment_view(request):
+    """Endpoint pour initialiser un paiement CinetPay"""
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            username = data.get('username')
+            plan_id = data.get('plan_id')
+            amount = data.get('amount')
+            
+            if not username or not plan_id or not amount:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'Paramètres manquants: username, plan_id, amount'
+                }, status=400)
+            
+            try:
+                user = User.objects.get(username=username)
+                plan = SubscriptionPlan.objects.get(id=plan_id)
+                profile = UserProfile.objects.get(user=user)
+            except (User.DoesNotExist, SubscriptionPlan.DoesNotExist, UserProfile.DoesNotExist):
+                return JsonResponse({
+                    'success': False,
+                    'message': 'Utilisateur ou plan non trouvé'
+                }, status=404)
+            
+            transaction_id = f"CINETPAY-{username}-{plan_id}-{int(timezone.now().timestamp())}"
+            
+            payment = Payment.objects.create(
+                user=user,
+                amount=amount,
+                payment_method='cinetpay',
+                status='pending',
+                transaction_id=transaction_id,
+                plan=plan
+            )
+            
+            subscription = Subscription.objects.create(
+                user=user,
+                plan=plan,
+                status='pending',
+                payment=payment
+            )
+            
+            api_key = os.environ.get('CINETPAY_API_KEY', '')
+            api_password = os.environ.get('CINETPAY_API_PASSWORD', '')
+            site_id = os.environ.get('CINETPAY_SITE_ID', '')
+            
+            if not api_key or not api_password or not site_id:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'Configuration CinetPay manquante'
+                }, status=500)
+            
+            cinetpay_data = {
+                'apikey': api_key,
+                'site_id': site_id,
+                'transaction_id': transaction_id,
+                'amount': int(float(amount) * 1000),
+                'currency': 'XOF',
+                'description': f'Abonnement {plan.name} - {username}',
+                'customer_name': profile.display_name or username,
+                'customer_surname': '',
+                'customer_email': user.email or '',
+                'customer_phone_number': profile.phone or '',
+                'notify_url': settings.CINETPAY_NOTIFY_URL,
+                'return_url': settings.CINETPAY_RETURN_URL,
+                'channels': 'ALL',
+                'lang': 'fr',
+                'mode': settings.CINETPAY_MODE
+            }
+            
+            response = requests.post(
+                'https://api.cinetpay.net/v1/?method=cinetpay-pay-v2',
+                json=cinetpay_data,
+                headers={'Content-Type': 'application/json'}
+            )
+            
+            result = response.json()
+            
+            if result.get('code') == '201' and result.get('data', {}).get('payment_url'):
+                payment_url = result['data']['payment_url']
+                return JsonResponse({
+                    'success': True,
+                    'payment_url': payment_url,
+                    'transaction_id': transaction_id
+                })
+            else:
+                return JsonResponse({
+                    'success': False,
+                    'message': result.get('message', 'Erreur lors de l\'initialisation du paiement')
+                }, status=400)
+                
+        except Exception as e:
+            logger.error(f'Erreur CinetPay initiate payment: {e}')
+            return JsonResponse({
+                'success': False,
+                'message': str(e)
+            }, status=500)
+    
+    return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
 
 @csrf_exempt
 def cinetpay_notify_view(request):

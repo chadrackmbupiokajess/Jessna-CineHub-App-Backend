@@ -44,6 +44,7 @@ urlpatterns = [
     path('api/update-phone/', views.update_phone_view, name='update-phone'),
     path('api/update-profile/', views.update_profile_view, name='update-profile'),
     path('api/app-content/', views.app_content_view, name='app-content'),
+    path('api/cinetpay/initiate/', views.cinetpay_initiate_payment_view, name='cinetpay-initiate'),
     path('api/cinetpay/notify/', views.cinetpay_notify_view, name='cinetpay-notify'),
     path('api/cinetpay/return/', views.cinetpay_return_view, name='cinetpay-return'),
 ]
