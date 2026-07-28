@@ -24,6 +24,8 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/login/', views.login_view, name='login'),
     path('api/register/', views.register_view, name='register'),
+    path('api/request-password-reset/', views.request_password_reset_view, name='request-password-reset'),
+    path('api/reset-password/', views.reset_password_view, name='reset-password'),
     path('api/subscription-plans/', views.subscription_plans_view, name='subscription-plans'),
     path('api/app-update/', views.app_update_view, name='app-update'),
     path('api/user-subscription/', views.user_subscription_view, name='user-subscription'),
@@ -42,6 +44,8 @@ urlpatterns = [
     path('api/update-phone/', views.update_phone_view, name='update-phone'),
     path('api/update-profile/', views.update_profile_view, name='update-profile'),
     path('api/app-content/', views.app_content_view, name='app-content'),
+    path('api/cinetpay/notify/', views.cinetpay_notify_view, name='cinetpay-notify'),
+    path('api/cinetpay/return/', views.cinetpay_return_view, name='cinetpay-return'),
 ]
 
 if settings.DEBUG:

@@ -3,11 +3,18 @@ from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.models import User
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
+from django.core.mail import send_mail
+from django.conf import settings
 from django.utils import timezone
 from datetime import timedelta
-from .models import AppUpdate, SubscriptionPlan, PaymentMethod, Subscription, Payment, Notification, UserProfile, WatchHistory, AppContent
+from .models import AppUpdate, SubscriptionPlan, PaymentMethod, Subscription, Payment, Notification, UserProfile, WatchHistory, AppContent, PasswordResetToken
+import hashlib
 import json
 import logging
+import secrets
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +39,7 @@ def login_view(request):
                     }, status=401)
             else:
                 username = username_or_email
+                user_obj = User.objects.filter(username=username).first()
 
             user = authenticate(request, username=username, password=password)
             if user is not None:
@@ -42,6 +50,11 @@ def login_view(request):
                     'username': user.username
                 })
             else:
+                if user_obj is not None:
+                    return JsonResponse({
+                        'success': False,
+                        'message': 'Mot de passe incorrect.'
+                    }, status=401)
                 return JsonResponse({
                     'success': False,
                     'message': 'Identifiants incorrects'
@@ -94,6 +107,127 @@ def register_view(request):
                 'message': str(e)
             }, status=400)
     return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
+
+def hash_reset_token(token):
+    return hashlib.sha256(token.encode('utf-8')).hexdigest()
+
+def build_password_reset_link(token):
+    reset_base_url = getattr(settings, 'PASSWORD_RESET_LINK_BASE_URL', 'applicationmobile://reset-password')
+    separator = '&' if '?' in reset_base_url else '?'
+    return f"{reset_base_url}{separator}token={token}"
+
+@csrf_exempt
+def request_password_reset_view(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            email = (data.get('email') or '').strip().lower()
+
+            if not email:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'Adresse e-mail requise'
+                }, status=400)
+
+            user = User.objects.filter(email__iexact=email).first()
+            if not user:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'Aucun compte ne correspond a cette adresse e-mail.'
+                }, status=404)
+
+            PasswordResetToken.objects.filter(user=user, used_at__isnull=True).update(used_at=timezone.now())
+            raw_token = secrets.token_urlsafe(40)
+            PasswordResetToken.objects.create(
+                user=user,
+                token_hash=hash_reset_token(raw_token),
+                expires_at=PasswordResetToken.default_expiry()
+            )
+
+            reset_link = build_password_reset_link(raw_token)
+            subject = 'Reinitialisation de votre mot de passe Jessna CineHub'
+            message = (
+                f"Bonjour {user.username},\n\n"
+                "Vous avez demande la reinitialisation de votre mot de passe Jessna CineHub.\n"
+                f"Ouvrez ce lien pour definir un nouveau mot de passe:\n{reset_link}\n\n"
+                "Ce lien expire dans 1 heure. Si vous n'etes pas a l'origine de cette demande, ignorez cet e-mail."
+            )
+
+            send_mail(
+                subject,
+                message,
+                getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@jessnacinehub.com'),
+                [user.email],
+                fail_silently=False
+            )
+
+            return JsonResponse({
+                'success': True,
+                'message': 'Un e-mail de reinitialisation a ete envoye.'
+            })
+        except Exception as e:
+            logger.exception('Password reset request failed')
+            return JsonResponse({
+                'success': False,
+                'message': str(e)
+            }, status=400)
+    return JsonResponse({'success': False, 'message': 'Methode non autorisee'}, status=405)
+
+@csrf_exempt
+def reset_password_view(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            token = (data.get('token') or '').strip()
+            new_password = data.get('new_password') or ''
+            confirm_password = data.get('confirm_password') or ''
+
+            if not token or not new_password or not confirm_password:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'Tous les champs sont requis'
+                }, status=400)
+
+            if new_password != confirm_password:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'Les mots de passe ne correspondent pas.'
+                }, status=400)
+
+            reset_token = PasswordResetToken.objects.select_related('user').filter(
+                token_hash=hash_reset_token(token)
+            ).first()
+
+            if not reset_token or not reset_token.is_valid():
+                return JsonResponse({
+                    'success': False,
+                    'message': 'Lien de reinitialisation invalide ou expire.'
+                }, status=400)
+
+            try:
+                validate_password(new_password, reset_token.user)
+            except ValidationError as validation_error:
+                return JsonResponse({
+                    'success': False,
+                    'message': ' '.join(validation_error.messages)
+                }, status=400)
+
+            user = reset_token.user
+            user.set_password(new_password)
+            user.save()
+            PasswordResetToken.objects.filter(user=user, used_at__isnull=True).update(used_at=timezone.now())
+
+            return JsonResponse({
+                'success': True,
+                'message': 'Mot de passe reinitialise avec succes.'
+            })
+        except Exception as e:
+            logger.exception('Password reset failed')
+            return JsonResponse({
+                'success': False,
+                'message': str(e)
+            }, status=400)
+    return JsonResponse({'success': False, 'message': 'Methode non autorisee'}, status=405)
 
 @csrf_exempt
 def subscription_plans_view(request):
@@ -1117,3 +1251,84 @@ def update_profile_view(request):
                 'message': str(e)
             }, status=400)
     return JsonResponse({'success': False, 'message': 'Methode non autorisee'}, status=405)
+
+@csrf_exempt
+def cinetpay_notify_view(request):
+    """Endpoint IPN CinetPay pour recevoir les notifications de paiement"""
+    if request.method == 'POST':
+        try:
+            data = request.POST if request.content_type == 'multipart/form-data' else json.loads(request.body)
+            
+            transaction_id = data.get('cpm_trans_id')
+            site_id = data.get('cpm_site_id')
+            signature = data.get('signature')
+            
+            if not transaction_id:
+                logger.error('CinetPay notify: transaction_id manquant')
+                return HttpResponse('transaction_id manquant', status=400)
+            
+            logger.info(f'CinetPay notify reçu: transaction_id={transaction_id}, site_id={site_id}')
+            
+            try:
+                payment = Payment.objects.get(transaction_id=transaction_id)
+                logger.info(f'Paiement trouvé: {payment.id}, statut actuel: {payment.status}')
+                
+                if payment.status == 'completed':
+                    return HttpResponse('Paiement déjà traité')
+                
+                payment_status = data.get('cpm_payment_status', 'pending')
+                if payment_status == 'ACCEPTED':
+                    payment.status = 'completed'
+                    payment.payment_date = timezone.now()
+                    
+                    if payment.subscription:
+                        subscription = payment.subscription
+                        subscription.status = 'active'
+                        subscription.save()
+                        logger.info(f'Abonnement activé pour utilisateur: {subscription.user.username}')
+                elif payment_status == 'REJECTED':
+                    payment.status = 'failed'
+                else:
+                    payment.status = 'pending'
+                
+                payment.save()
+                return HttpResponse('Notification traitée avec succès')
+                
+            except Payment.DoesNotExist:
+                logger.error(f'Paiement non trouvé pour transaction_id: {transaction_id}')
+                return HttpResponse('Paiement non trouvé', status=404)
+                
+        except Exception as e:
+            logger.error(f'Erreur CinetPay notify: {e}')
+            return HttpResponse(f'Erreur: {str(e)}', status=500)
+    
+    return HttpResponse('Méthode non autorisée', status=405)
+
+@csrf_exempt
+def cinetpay_return_view(request):
+    """Endpoint de retour après paiement CinetPay"""
+    if request.method == 'GET':
+        try:
+            transaction_id = request.GET.get('cpm_trans_id')
+            
+            if transaction_id:
+                logger.info(f'CinetPay return: transaction_id={transaction_id}')
+                return JsonResponse({
+                    'success': True,
+                    'transaction_id': transaction_id,
+                    'message': 'Paiement traité'
+                })
+            
+            return JsonResponse({
+                'success': False,
+                'message': 'transaction_id manquant'
+            }, status=400)
+            
+        except Exception as e:
+            logger.error(f'Erreur CinetPay return: {e}')
+            return JsonResponse({
+                'success': False,
+                'message': str(e)
+            }, status=500)
+    
+    return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)

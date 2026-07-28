@@ -13,7 +13,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('version', models.CharField(help_text='Version APK affichee aux utilisateurs', max_length=50)),
-                ('apk_url', models.URLField(help_text="Lien direct de telechargement de l'APK")),
+                ('apk_url', models.URLField(help_text="Lien direct de téléchargement de l'APK")),
                 ('message', models.TextField(default="Une nouvelle version de l'application est disponible.")),
                 ('is_active', models.BooleanField(default=False, help_text="Activer pour afficher la notification dans l'application mobile")),
                 ('force_update', models.BooleanField(default=False, help_text='Indique si la mise a jour est obligatoire')),

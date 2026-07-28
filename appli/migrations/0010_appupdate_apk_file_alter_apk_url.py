@@ -16,6 +16,6 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='appupdate',
             name='apk_url',
-            field=models.URLField(blank=True, help_text="Ancien lien direct de telechargement de l'APK (optionnel)"),
+            field=models.URLField(blank=True, help_text="Ancien lien direct de téléchargement de l'APK (optionnel)"),
         ),
     ]

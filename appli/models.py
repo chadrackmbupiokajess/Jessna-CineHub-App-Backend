@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
+from datetime import timedelta
 
 class Notification(models.Model):
     NOTIFICATION_TYPES = [
@@ -44,10 +45,30 @@ class UserProfile(models.Model):
     def __str__(self):
         return f"{self.user.username} - {self.display_name or self.user.username}"
 
+class PasswordResetToken(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='password_reset_tokens')
+    token_hash = models.CharField(max_length=64, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def is_valid(self):
+        return self.used_at is None and timezone.now() < self.expires_at
+
+    @classmethod
+    def default_expiry(cls):
+        return timezone.now() + timedelta(hours=1)
+
+    def __str__(self):
+        return f"{self.user.username} - {'utilise' if self.used_at else 'actif'}"
+
 class AppUpdate(models.Model):
     version = models.CharField(max_length=50, help_text="Version APK affichee aux utilisateurs")
     apk_file = models.FileField(upload_to='app_updates/', blank=True, null=True, help_text="Importer le fichier APK de la nouvelle version")
-    apk_url = models.URLField(blank=True, help_text="Ancien lien direct de telechargement de l'APK (optionnel)")
+    apk_url = models.URLField(blank=True, help_text="Ancien lien direct de téléchargement de l'APK (optionnel)")
     message = models.TextField(default="Une nouvelle version de l'application est disponible.")
     is_active = models.BooleanField(default=False, help_text="Activer pour afficher la notification dans l'application mobile")
     force_update = models.BooleanField(default=False, help_text="Indique si la mise a jour est obligatoire")
