@@ -1344,7 +1344,7 @@ def cinetpay_initiate_payment_view(request):
                         client_email=user.email or 'client@example.com',
                         client_first_name=profile.display_name or username,
                         client_last_name='Client',
-                        client_phone_number=profile.phone or '+243000000000',
+                        client_phone_number=profile.phone.replace(' ', '') if profile.phone else '+243000000000',
                         success_url=settings.CINETPAY_RETURN_URL,
                         failed_url=settings.CINETPAY_RETURN_URL,
                         notify_url=settings.CINETPAY_NOTIFY_URL,
