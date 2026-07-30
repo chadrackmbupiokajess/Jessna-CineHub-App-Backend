@@ -1314,6 +1314,8 @@ def cinetpay_initiate_payment_view(request):
             api_key = os.environ.get('CINETPAY_API_KEY', '')
             api_password = os.environ.get('CINETPAY_API_PASSWORD', '')
             
+            logger.info(f'CinetPay Config - API_KEY: {api_key[:10]}... if api_key else "MISSING", API_PASSWORD: {"SET" if api_password else "MISSING"}')
+            
             if not api_key or not api_password:
                 return JsonResponse({
                     'success': False,
