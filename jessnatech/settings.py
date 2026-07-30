@@ -162,4 +162,4 @@ CINETPAY_API_PASSWORD = os.environ.get('CINETPAY_API_PASSWORD')
 CINETPAY_MODE = os.environ.get('CINETPAY_MODE', 'TEST')  # TEST or PRODUCTION
 CINETPAY_NOTIFY_URL = os.environ.get('CINETPAY_NOTIFY_URL', 'https://jessnacinehub.pythonanywhere.com/api/cinetpay/notify')
 CINETPAY_RETURN_URL = os.environ.get('CINETPAY_RETURN_URL', 'https://jessnacinehub.pythonanywhere.com/api/cinetpay/return')
-CINETPAY_COUNTRY = os.environ.get('CINETPAY_COUNTRY', 'CI')  # Pays: CI pour Côte d'Ivoire (par défaut CinetPay)
+CINETPAY_COUNTRY = os.environ.get('CINETPAY_COUNTRY', 'CD')  # Pays: CD pour RD Congo
