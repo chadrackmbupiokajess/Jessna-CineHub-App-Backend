@@ -1299,52 +1299,71 @@ def cinetpay_initiate_payment_view(request):
             
             api_key = os.environ.get('CINETPAY_API_KEY', '')
             api_password = os.environ.get('CINETPAY_API_PASSWORD', '')
-            site_id = os.environ.get('CINETPAY_SITE_ID', '')
             
-            if not api_key or not api_password or not site_id:
+            if not api_key or not api_password:
                 return JsonResponse({
                     'success': False,
-                    'message': 'Configuration CinetPay manquante'
+                    'message': 'Configuration CinetPay manquante (API_KEY ou API_PASSWORD)'
                 }, status=500)
             
-            cinetpay_data = {
-                'apikey': api_key,
-                'site_id': site_id,
-                'transaction_id': transaction_id,
-                'amount': int(float(amount) * 1000),
-                'currency': 'XOF',
-                'description': f'Abonnement {plan.name} - {username}',
-                'customer_name': profile.display_name or username,
-                'customer_surname': '',
-                'customer_email': user.email or '',
-                'customer_phone_number': profile.phone or '',
-                'notify_url': settings.CINETPAY_NOTIFY_URL,
-                'return_url': settings.CINETPAY_RETURN_URL,
-                'channels': 'ALL',
-                'lang': 'fr',
-                'mode': settings.CINETPAY_MODE
-            }
-            
-            response = requests.post(
-                'https://api.cinetpay.net/v1/?method=cinetpay-pay-v2',
-                json=cinetpay_data,
-                headers={'Content-Type': 'application/json'}
-            )
-            
-            result = response.json()
-            
-            if result.get('code') == '201' and result.get('data', {}).get('payment_url'):
-                payment_url = result['data']['payment_url']
-                return JsonResponse({
-                    'success': True,
-                    'payment_url': payment_url,
-                    'transaction_id': transaction_id
-                })
-            else:
+            # Utiliser le SDK Python officiel
+            try:
+                from cinetpay import CinetPayClient, ClientConfig, CountryCredentials, PaymentRequest
+                
+                client = CinetPayClient(ClientConfig(
+                    credentials={
+                        settings.CINETPAY_COUNTRY: CountryCredentials(
+                            api_key=api_key,
+                            api_password=api_password,
+                        ),
+                    },
+                    debug=True,
+                ))
+                
+                payment = client.payment.initialize(
+                    PaymentRequest(
+                        currency='XOF',
+                        merchant_transaction_id=transaction_id,
+                        amount=int(float(amount) * 1000),
+                        lang='fr',
+                        designation=f'Abonnement {plan.name} - {username}',
+                        client_email=user.email or '',
+                        client_first_name=profile.display_name or username,
+                        client_last_name='',
+                        client_phone_number=profile.phone or '',
+                        success_url=settings.CINETPAY_RETURN_URL,
+                        failed_url=settings.CINETPAY_RETURN_URL,
+                        notify_url=settings.CINETPAY_NOTIFY_URL,
+                        channel='PUSH',
+                    ),
+                    settings.CINETPAY_COUNTRY,
+                )
+                
+                if payment.payment_url:
+                    return JsonResponse({
+                        'success': True,
+                        'payment_url': payment.payment_url,
+                        'transaction_id': transaction_id
+                    })
+                else:
+                    return JsonResponse({
+                        'success': False,
+                        'message': 'Erreur lors de l\'initialisation du paiement'
+                    }, status=400)
+                    
+            except ImportError:
+                # Fallback si le SDK n'est pas installé
+                logger.error('SDK cinetpay-python non installé')
                 return JsonResponse({
                     'success': False,
-                    'message': result.get('message', 'Erreur lors de l\'initialisation du paiement')
-                }, status=400)
+                    'message': 'SDK CinetPay non installé. Installez avec: pip install cinetpay-python'
+                }, status=500)
+            except Exception as e:
+                logger.error(f'Erreur SDK CinetPay: {e}')
+                return JsonResponse({
+                    'success': False,
+                    'message': f'Erreur SDK: {str(e)}'
+                }, status=500)
                 
         except Exception as e:
             logger.error(f'Erreur CinetPay initiate payment: {e}')
