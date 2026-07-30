@@ -1289,12 +1289,17 @@ def cinetpay_initiate_payment_view(request):
                 account_name='CinetPay Payment'
             )
             
-            # Créer l'abonnement en attente
+            # Créer l'abonnement en attente avec les dates
+            start_date = timezone.now()
+            end_date = start_date + timedelta(days=plan.duration_days)
+            
             subscription = Subscription.objects.create(
                 user=user,
                 plan=plan,
                 status='pending',
-                payment_method=payment_method
+                payment_method=payment_method,
+                start_date=start_date,
+                end_date=end_date
             )
             
             # Créer le paiement
