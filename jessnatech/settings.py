@@ -11,6 +11,10 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Charger les variables d'environnement depuis .env
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -153,8 +157,8 @@ DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER or 'no
 PASSWORD_RESET_LINK_BASE_URL = os.environ.get('PASSWORD_RESET_LINK_BASE_URL', 'applicationmobile://reset-password')
 
 # CinetPay Configuration
-CINETPAY_API_KEY = os.environ.get('CINETPAY_API_KEY', '')
-CINETPAY_API_PASSWORD = os.environ.get('CINETPAY_API_PASSWORD', '')
+CINETPAY_API_KEY = os.environ.get('CINETPAY_API_KEY')
+CINETPAY_API_PASSWORD = os.environ.get('CINETPAY_API_PASSWORD')
 CINETPAY_MODE = os.environ.get('CINETPAY_MODE', 'TEST')  # TEST or PRODUCTION
 CINETPAY_NOTIFY_URL = os.environ.get('CINETPAY_NOTIFY_URL', 'https://jessnacinehub.pythonanywhere.com/api/cinetpay/notify')
 CINETPAY_RETURN_URL = os.environ.get('CINETPAY_RETURN_URL', 'https://jessnacinehub.pythonanywhere.com/api/cinetpay/return')
