@@ -1281,20 +1281,29 @@ def cinetpay_initiate_payment_view(request):
             
             transaction_id = f"CINETPAY-{username}-{plan_id}-{int(timezone.now().timestamp())}"
             
-            payment = Payment.objects.create(
+            # Créer une méthode de paiement CinetPay
+            payment_method = PaymentMethod.objects.create(
                 user=user,
-                amount=amount,
-                payment_method='cinetpay',
-                status='pending',
-                transaction_id=transaction_id,
-                plan=plan
+                payment_type='cinetpay',
+                account_number='CINETPAY',
+                account_name='CinetPay Payment'
             )
             
+            # Créer l'abonnement en attente
             subscription = Subscription.objects.create(
                 user=user,
                 plan=plan,
                 status='pending',
-                payment=payment
+                payment_method=payment_method
+            )
+            
+            # Créer le paiement
+            payment = Payment.objects.create(
+                subscription=subscription,
+                payment_method=payment_method,
+                amount=amount,
+                status='pending',
+                transaction_id=transaction_id
             )
             
             api_key = os.environ.get('CINETPAY_API_KEY', '')

@@ -113,6 +113,7 @@ class PaymentMethod(models.Model):
         ('mpesa', 'M-PESA'),
         ('paypal', 'PayPal'),
         ('bank', 'Compte Bancaire'),
+        ('cinetpay', 'CinetPay'),
     ]
     
     user = models.ForeignKey(User, on_delete=models.CASCADE)
