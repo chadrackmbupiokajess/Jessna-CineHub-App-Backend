@@ -264,16 +264,11 @@ def android_asset_links_view(request):
     ouvrent l'application directement, sans passer par le navigateur ni la
     page de redirection (share_redirect_view) - contrairement à aujourd'hui.
 
-    IMPORTANT: l'empreinte SHA256 ci-dessous est un placeholder. Elle doit
-    être remplacée par l'empreinte réelle du certificat de signature de
-    l'APK final (Chadrack doit fournir l'APK pour l'extraire). Tant que ce
-    n'est pas fait, Android ne vérifiera pas le domaine et les liens de
-    partage continueront de fonctionner comme avant (via la page web de
-    secours), sans erreur ni régression - c'est juste l'ouverture directe en
-    un clic qui ne sera pas encore active.
+    Empreinte du keystore géré par EAS (récupérée via expo.dev / `eas
+    credentials`) pour le package Android com.okab.ApplicationMobile.
     """
     fingerprints = [
-        "00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00",
+        "D7:9D:79:75:90:F3:E5:0F:A5:1A:CD:21:B8:12:A1:B2:18:FB:36:6C:1F:6F:6F:59:42:21:05:49:74:71:C0:87",
     ]
     data = [{
         "relation": ["delegate_permission/common.handle_all_urls"],
