@@ -10,7 +10,7 @@ from django.utils.html import escape
 from django.conf import settings
 from django.utils import timezone
 from datetime import timedelta
-from .models import AppUpdate, SubscriptionPlan, PaymentMethod, Subscription, Payment, Notification, UserProfile, WatchHistory, AppContent, PasswordResetToken, MyListItem
+from .models import AppUpdate, SubscriptionPlan, PaymentMethod, Subscription, Payment, Notification, UserProfile, WatchHistory, AppContent, PasswordResetToken, MyListItem, SharedLink
 import hashlib
 import json
 import logging
@@ -316,6 +316,157 @@ def share_redirect_view(request, content_type, slug):
 <title>{escaped_title} - Jessna CinéHub</title>
 <meta property="og:title" content="{escaped_title}">
 <meta property="og:description" content="Regarde {escaped_title} sur Jessna CinéHub">
+{og_image_tag}
+<style>
+  body {{ background:#050505; color:#fff; font-family: -apple-system, Roboto, sans-serif; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; margin:0; text-align:center; padding:24px; box-sizing:border-box; }}
+  a {{ color:#e50914; font-weight:700; }}
+</style>
+<script>
+  window.location.replace("{app_scheme_url}");
+  setTimeout(function () {{
+    window.location.replace("{fallback_url}");
+  }}, 1800);
+</script>
+</head>
+<body>
+  <p>Ouverture de {escaped_title} sur Jessna CinéHub…</p>
+  <p><a href="{app_scheme_url}">Cliquez ici si rien ne se passe</a></p>
+</body>
+</html>"""
+    return HttpResponse(html)
+
+@csrf_exempt
+def create_share_link_view(request):
+    """
+    Crée (ou réutilise) un lien de partage court pour un film/série, stocké
+    dans SharedLink. Remplace l'ancien lien avec ?title=...&poster=... par
+    une URL courte /share/<code>/ - le code est résolu côté serveur pour
+    retrouver titre/affiche/catégorie/date de sortie.
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            movie_slug = data.get('movie_slug')
+            if not movie_slug:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'movie_slug requis'
+                }, status=400)
+
+            content_type = data.get('content_type', 'movie')
+            movie_title = data.get('movie_title', '')
+            movie_poster = data.get('movie_poster', '')
+            category = data.get('category', '')
+            release_date = data.get('release_date', '')
+
+            link = SharedLink.objects.filter(movie_slug=movie_slug, content_type=content_type).first()
+            if link is None:
+                link = SharedLink.objects.create(
+                    movie_slug=movie_slug,
+                    content_type=content_type,
+                    movie_title=movie_title,
+                    movie_poster=movie_poster,
+                    category=category,
+                    release_date=release_date,
+                )
+            else:
+                link.movie_title = movie_title or link.movie_title
+                link.movie_poster = movie_poster or link.movie_poster
+                link.category = category or link.category
+                link.release_date = release_date or link.release_date
+                link.save(update_fields=['movie_title', 'movie_poster', 'category', 'release_date'])
+
+            share_url = request.build_absolute_uri(f'/share/{link.code}/')
+
+            return JsonResponse({
+                'success': True,
+                'code': link.code,
+                'share_url': share_url,
+            })
+        except Exception as e:
+            logger.error(f"Erreur création lien de partage: {e}")
+            return JsonResponse({
+                'success': False,
+                'message': str(e)
+            }, status=400)
+    return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
+
+def resolve_share_link_view(request, code):
+    """
+    Utilisé par l'application mobile (route share/[code]) pour retrouver le
+    film/série correspondant à un code court, afin de rediriger directement
+    vers l'écran de détail sans repasser par le navigateur.
+    """
+    if request.method == 'GET':
+        try:
+            try:
+                link = SharedLink.objects.get(code=code)
+            except SharedLink.DoesNotExist:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'Lien introuvable'
+                }, status=404)
+
+            return JsonResponse({
+                'success': True,
+                'movie_slug': link.movie_slug,
+                'movie_title': link.movie_title,
+                'movie_poster': link.movie_poster,
+                'content_type': link.content_type,
+                'category': link.category,
+                'release_date': link.release_date,
+            })
+        except Exception as e:
+            logger.error(f"Erreur résolution lien de partage: {e}")
+            return JsonResponse({
+                'success': False,
+                'message': str(e)
+            }, status=400)
+    return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
+
+def share_code_redirect_view(request, code):
+    """
+    Version courte de share_redirect_view: /share/<code>/ au lieu de
+    /share/<content_type>/<slug>/?title=...&poster=.... Le code est résolu
+    depuis SharedLink pour retrouver titre/affiche/slug, ce qui garde l'URL
+    visible courte et propre tout en gardant le clic fonctionnel pour ouvrir
+    l'application directement sur le contenu.
+    """
+    try:
+        link = SharedLink.objects.get(code=code)
+    except SharedLink.DoesNotExist:
+        return HttpResponse("Lien de partage introuvable ou expiré.", status=404)
+
+    title = link.movie_title or 'Jessna CinéHub'
+    poster = link.movie_poster or ''
+    app_scheme_url = f"applicationmobile:///detail/{link.movie_slug}"
+
+    download_url = ''
+    try:
+        update = AppUpdate.objects.filter(is_active=True).order_by('-updated_at').first()
+        if update:
+            download_url = update.get_download_url(request) or ''
+    except Exception:
+        download_url = ''
+
+    fallback_url = download_url or 'https://jessnacinehub.pythonanywhere.com'
+
+    escaped_title = escape(title)
+    escaped_poster = escape(poster)
+    og_image_tag = f'<meta property="og:image" content="{escaped_poster}">' if poster else ''
+
+    description_parts = [part for part in [link.category, link.release_date] if part]
+    description = ' • '.join(description_parts) if description_parts else f"Regarde {title} sur Jessna CinéHub"
+    escaped_description = escape(description)
+
+    html = f"""<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{escaped_title} - Jessna CinéHub</title>
+<meta property="og:title" content="{escaped_title}">
+<meta property="og:description" content="{escaped_description}">
 {og_image_tag}
 <style>
   body {{ background:#050505; color:#fff; font-family: -apple-system, Roboto, sans-serif; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; margin:0; text-align:center; padding:24px; box-sizing:border-box; }}

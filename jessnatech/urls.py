@@ -50,7 +50,10 @@ urlpatterns = [
     path('api/cinetpay/initiate/', views.cinetpay_initiate_payment_view, name='cinetpay-initiate'),
     path('api/cinetpay/notify/', views.cinetpay_notify_view, name='cinetpay-notify'),
     path('api/cinetpay/return/', views.cinetpay_return_view, name='cinetpay-return'),
+    path('api/create-share-link/', views.create_share_link_view, name='create-share-link'),
+    path('api/resolve-share-link/<str:code>/', views.resolve_share_link_view, name='resolve-share-link'),
     path('share/<str:content_type>/<str:slug>/', views.share_redirect_view, name='share-redirect'),
+    path('share/<str:code>/', views.share_code_redirect_view, name='share-code-redirect'),
     path('.well-known/assetlinks.json', views.android_asset_links_view, name='android-asset-links'),
 ]
 

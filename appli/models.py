@@ -1,3 +1,5 @@
+import secrets
+import string
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
@@ -210,6 +212,35 @@ class MyListItem(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.movie_title}"
+
+class SharedLink(models.Model):
+    code = models.CharField(max_length=12, unique=True, db_index=True)
+    movie_title = models.CharField(max_length=255)
+    movie_slug = models.CharField(max_length=255)
+    movie_poster = models.URLField(blank=True)
+    content_type = models.CharField(max_length=20, choices=[('movie', 'Film'), ('tv', 'Série')], default='movie')
+    category = models.CharField(max_length=255, blank=True)
+    release_date = models.CharField(max_length=50, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    @staticmethod
+    def generate_code(length=7):
+        alphabet = string.ascii_letters + string.digits
+        return ''.join(secrets.choice(alphabet) for _ in range(length))
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            new_code = self.generate_code()
+            while SharedLink.objects.filter(code=new_code).exists():
+                new_code = self.generate_code()
+            self.code = new_code
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.code} - {self.movie_title}"
 
 class AppContent(models.Model):
     CONTENT_TYPES = [
