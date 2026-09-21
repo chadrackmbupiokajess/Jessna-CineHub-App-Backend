@@ -315,7 +315,7 @@ def share_redirect_view(request, content_type, slug):
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{escaped_title} - Jessna CinéHub</title>
 <meta property="og:title" content="{escaped_title}">
-<meta property="og:description" content="Regarde {escaped_title} sur Jessna CinéHub">
+<meta property="og:description" content="Regardez {escaped_title} sur Jessna CinéHub">
 {og_image_tag}
 <style>
   body {{ background:#050505; color:#fff; font-family: -apple-system, Roboto, sans-serif; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; margin:0; text-align:center; padding:24px; box-sizing:border-box; }}
@@ -455,8 +455,12 @@ def share_code_redirect_view(request, code):
     escaped_poster = escape(poster)
     og_image_tag = f'<meta property="og:image" content="{escaped_poster}">' if poster else ''
 
-    description_parts = [part for part in [link.category, link.release_date] if part]
-    description = ' • '.join(description_parts) if description_parts else f"Regarde {title} sur Jessna CinéHub"
+    # "Regardez sur Jessna CinéHub" (forme de politesse) s'affiche sous le
+    # petit detail (catégorie • date de sortie) dans l'aperçu du lien.
+    detail_parts = [part for part in [link.category, link.release_date] if part]
+    detail_line = ' • '.join(detail_parts)
+    cta_line = 'Regardez sur Jessna CinéHub'
+    description = f"{detail_line}\n{cta_line}" if detail_line else cta_line
     escaped_description = escape(description)
 
     html = f"""<!DOCTYPE html>
