@@ -6,10 +6,11 @@ from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
+from django.utils.html import escape
 from django.conf import settings
 from django.utils import timezone
 from datetime import timedelta
-from .models import AppUpdate, SubscriptionPlan, PaymentMethod, Subscription, Payment, Notification, UserProfile, WatchHistory, AppContent, PasswordResetToken
+from .models import AppUpdate, SubscriptionPlan, PaymentMethod, Subscription, Payment, Notification, UserProfile, WatchHistory, AppContent, PasswordResetToken, MyListItem
 import hashlib
 import json
 import logging
@@ -255,6 +256,89 @@ def subscription_plans_view(request):
                 'message': str(e)
             }, status=400)
     return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
+
+def android_asset_links_view(request):
+    """
+    Fichier de vérification "Android App Links" (Digital Asset Links). Une
+    fois qu'Android a vérifié ce fichier, les liens https://.../share/...
+    ouvrent l'application directement, sans passer par le navigateur ni la
+    page de redirection (share_redirect_view) - contrairement à aujourd'hui.
+
+    IMPORTANT: l'empreinte SHA256 ci-dessous est un placeholder. Elle doit
+    être remplacée par l'empreinte réelle du certificat de signature de
+    l'APK final (Chadrack doit fournir l'APK pour l'extraire). Tant que ce
+    n'est pas fait, Android ne vérifiera pas le domaine et les liens de
+    partage continueront de fonctionner comme avant (via la page web de
+    secours), sans erreur ni régression - c'est juste l'ouverture directe en
+    un clic qui ne sera pas encore active.
+    """
+    fingerprints = [
+        "00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00",
+    ]
+    data = [{
+        "relation": ["delegate_permission/common.handle_all_urls"],
+        "target": {
+            "namespace": "android_app",
+            "package_name": "com.okab.ApplicationMobile",
+            "sha256_cert_fingerprints": fingerprints,
+        },
+    }]
+    return JsonResponse(data, safe=False)
+
+def share_redirect_view(request, content_type, slug):
+    """
+    Page de partage: quand un utilisateur partage un film/série, le lien
+    partagé pointe ici (une vraie URL https, cliquable dans n'importe quelle
+    appli de messagerie - contrairement à un lien applicationmobile:// seul,
+    que la plupart des applis n'affichent pas comme cliquable). Cette page
+    tente d'ouvrir directement l'application sur ce contenu; si elle n'est
+    pas installée, elle bascule vers le téléchargement de l'app après un
+    court délai.
+    """
+    title = request.GET.get('title') or 'Jessna CinéHub'
+    poster = request.GET.get('poster') or ''
+    app_scheme_url = f"applicationmobile:///detail/{slug}"
+
+    download_url = ''
+    try:
+        update = AppUpdate.objects.filter(is_active=True).order_by('-updated_at').first()
+        if update:
+            download_url = update.get_download_url(request) or ''
+    except Exception:
+        download_url = ''
+
+    fallback_url = download_url or 'https://jessnacinehub.pythonanywhere.com'
+
+    escaped_title = escape(title)
+    escaped_poster = escape(poster)
+    og_image_tag = f'<meta property="og:image" content="{escaped_poster}">' if poster else ''
+
+    html = f"""<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{escaped_title} - Jessna CinéHub</title>
+<meta property="og:title" content="{escaped_title}">
+<meta property="og:description" content="Regarde {escaped_title} sur Jessna CinéHub">
+{og_image_tag}
+<style>
+  body {{ background:#050505; color:#fff; font-family: -apple-system, Roboto, sans-serif; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; margin:0; text-align:center; padding:24px; box-sizing:border-box; }}
+  a {{ color:#e50914; font-weight:700; }}
+</style>
+<script>
+  window.location.replace("{app_scheme_url}");
+  setTimeout(function () {{
+    window.location.replace("{fallback_url}");
+  }}, 1800);
+</script>
+</head>
+<body>
+  <p>Ouverture de {escaped_title} sur Jessna CinéHub…</p>
+  <p><a href="{app_scheme_url}">Cliquez ici si rien ne se passe</a></p>
+</body>
+</html>"""
+    return HttpResponse(html)
 
 @csrf_exempt
 def app_update_view(request):
@@ -1047,6 +1131,127 @@ def get_watch_history(request):
             })
         except Exception as e:
             logger.error(f"Erreur récupération historique: {e}")
+            return JsonResponse({
+                'success': False,
+                'message': str(e)
+            }, status=400)
+    return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
+
+@csrf_exempt
+def get_my_list(request):
+    if request.method == 'GET':
+        try:
+            username = request.GET.get('username')
+
+            try:
+                user = User.objects.get(username=username)
+            except User.DoesNotExist:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'Utilisateur non trouvé'
+                }, status=404)
+
+            items = MyListItem.objects.filter(user=user)
+
+            items_data = []
+            for item in items:
+                items_data.append({
+                    'id': item.id,
+                    'movie_title': item.movie_title,
+                    'movie_slug': item.movie_slug,
+                    'movie_poster': item.movie_poster,
+                    'content_type': item.content_type,
+                    'added_at': item.added_at.isoformat(),
+                })
+
+            return JsonResponse({
+                'success': True,
+                'items': items_data
+            })
+        except Exception as e:
+            logger.error(f"Erreur récupération ma liste: {e}")
+            return JsonResponse({
+                'success': False,
+                'message': str(e)
+            }, status=400)
+    return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
+
+@csrf_exempt
+def add_to_my_list(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            username = data.get('username')
+
+            try:
+                user = User.objects.get(username=username)
+            except User.DoesNotExist:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'Utilisateur non trouvé'
+                }, status=404)
+
+            movie_slug = data.get('movie_slug')
+            if not movie_slug:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'movie_slug requis'
+                }, status=400)
+
+            MyListItem.objects.update_or_create(
+                user=user,
+                movie_slug=movie_slug,
+                defaults={
+                    'movie_title': data.get('movie_title', ''),
+                    'movie_poster': data.get('movie_poster', ''),
+                    'content_type': data.get('content_type', 'movie'),
+                }
+            )
+
+            profile, _ = UserProfile.objects.get_or_create(user=user)
+            profile.favorite_count = MyListItem.objects.filter(user=user).count()
+            profile.save(update_fields=['favorite_count'])
+
+            return JsonResponse({
+                'success': True,
+                'message': 'Ajouté à la liste'
+            })
+        except Exception as e:
+            logger.error(f"Erreur ajout ma liste: {e}")
+            return JsonResponse({
+                'success': False,
+                'message': str(e)
+            }, status=400)
+    return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
+
+@csrf_exempt
+def remove_from_my_list(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            username = data.get('username')
+
+            try:
+                user = User.objects.get(username=username)
+            except User.DoesNotExist:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'Utilisateur non trouvé'
+                }, status=404)
+
+            movie_slug = data.get('movie_slug')
+            MyListItem.objects.filter(user=user, movie_slug=movie_slug).delete()
+
+            profile, _ = UserProfile.objects.get_or_create(user=user)
+            profile.favorite_count = MyListItem.objects.filter(user=user).count()
+            profile.save(update_fields=['favorite_count'])
+
+            return JsonResponse({
+                'success': True,
+                'message': 'Retiré de la liste'
+            })
+        except Exception as e:
+            logger.error(f"Erreur suppression ma liste: {e}")
             return JsonResponse({
                 'success': False,
                 'message': str(e)

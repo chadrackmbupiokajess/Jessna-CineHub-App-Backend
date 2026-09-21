@@ -41,12 +41,17 @@ urlpatterns = [
     path('api/watch-history/', views.get_watch_history, name='watch-history'),
     path('api/add-to-watch-history/', views.add_to_watch_history, name='add-to-watch-history'),
     path('api/payment-history/', views.payment_history_view, name='payment-history'),
+    path('api/my-list/', views.get_my_list, name='my-list'),
+    path('api/add-to-my-list/', views.add_to_my_list, name='add-to-my-list'),
+    path('api/remove-from-my-list/', views.remove_from_my_list, name='remove-from-my-list'),
     path('api/update-phone/', views.update_phone_view, name='update-phone'),
     path('api/update-profile/', views.update_profile_view, name='update-profile'),
     path('api/app-content/', views.app_content_view, name='app-content'),
     path('api/cinetpay/initiate/', views.cinetpay_initiate_payment_view, name='cinetpay-initiate'),
     path('api/cinetpay/notify/', views.cinetpay_notify_view, name='cinetpay-notify'),
     path('api/cinetpay/return/', views.cinetpay_return_view, name='cinetpay-return'),
+    path('share/<str:content_type>/<str:slug>/', views.share_redirect_view, name='share-redirect'),
+    path('.well-known/assetlinks.json', views.android_asset_links_view, name='android-asset-links'),
 ]
 
 if settings.DEBUG:

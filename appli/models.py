@@ -196,6 +196,21 @@ class WatchHistory(models.Model):
     def __str__(self):
         return f"{self.user.username} - {self.movie_title}"
 
+class MyListItem(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='my_list_items')
+    movie_title = models.CharField(max_length=255)
+    movie_slug = models.CharField(max_length=255)
+    movie_poster = models.URLField(blank=True)
+    content_type = models.CharField(max_length=20, choices=[('movie', 'Film'), ('tv', 'Série')], default='movie')
+    added_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-added_at']
+        unique_together = ('user', 'movie_slug')
+
+    def __str__(self):
+        return f"{self.user.username} - {self.movie_title}"
+
 class AppContent(models.Model):
     CONTENT_TYPES = [
         ('help', 'Aide'),
