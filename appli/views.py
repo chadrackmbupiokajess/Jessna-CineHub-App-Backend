@@ -40,8 +40,11 @@ def login_view(request):
                         'message': 'Identifiants incorrects'
                     }, status=401)
             else:
-                username = username_or_email
-                user_obj = User.objects.filter(username=username).first()
+                # Les identifiants ne dépendent pas de la casse. On récupère
+                # l'orthographe enregistrée pour que authenticate() et les
+                # appels API suivants utilisent le nom canonique du compte.
+                user_obj = User.objects.filter(username__iexact=username_or_email).first()
+                username = user_obj.username if user_obj else username_or_email
 
             user = authenticate(request, username=username, password=password)
             if user is not None:
@@ -77,7 +80,7 @@ def register_view(request):
             email = data.get('email')
             password = data.get('password')
 
-            if User.objects.filter(username=username).exists():
+            if User.objects.filter(username__iexact=username).exists():
                 return JsonResponse({
                     'success': False,
                     'message': 'Ce nom d\'utilisateur existe déjà'
