@@ -10,7 +10,7 @@ from django.utils.html import escape
 from django.conf import settings
 from django.utils import timezone
 from datetime import timedelta
-from .models import AppUpdate, SubscriptionPlan, PaymentMethod, Subscription, Payment, Notification, UserProfile, WatchHistory, AppContent, PasswordResetToken, MyListItem, SharedLink
+from .models import AppUpdate, SubscriptionPlan, PaymentMethod, Subscription, Payment, Notification, UserProfile, WatchHistory, AppContent, PasswordResetToken, MyListItem, SharedLink, PcAppRelease
 import hashlib
 import json
 import logging
@@ -283,59 +283,172 @@ def android_asset_links_view(request):
     }]
     return JsonResponse(data, safe=False)
 
-def share_redirect_view(request, content_type, slug):
-    """
-    Page de partage: quand un utilisateur partage un film/série, le lien
-    partagé pointe ici (une vraie URL https, cliquable dans n'importe quelle
-    appli de messagerie - contrairement à un lien applicationmobile:// seul,
-    que la plupart des applis n'affichent pas comme cliquable). Cette page
-    tente d'ouvrir directement l'application sur ce contenu; si elle n'est
-    pas installée, elle bascule vers le téléchargement de l'app après un
-    court délai.
-    """
-    title = request.GET.get('title') or 'Jessna CinéHub'
-    poster = request.GET.get('poster') or ''
-    app_scheme_url = f"applicationmobile:///detail/{slug}"
+# Lien de téléchargement de l'application PC (Windows) utilisé seulement si
+# aucune "Version PC" active n'est configurée dans l'admin Django.
+PC_APP_DOWNLOAD_URL = getattr(
+    settings,
+    'PC_APP_DOWNLOAD_URL',
+    'https://github.com/chadrackmbupiokajess/Jessna-CineHub-App-PC-Ok/releases/latest',
+)
 
-    download_url = ''
+
+def _pc_download_url(request):
+    """Lien de la Version PC active (admin > Versions PC), comme pour l'APK."""
+    try:
+        release = PcAppRelease.objects.filter(is_active=True).order_by('-updated_at').first()
+        if release:
+            url = release.get_download_url(request)
+            if url:
+                return url
+    except Exception:
+        pass
+    return PC_APP_DOWNLOAD_URL
+
+
+def _share_page_html(request, title, poster, description, slug, content_type):
+    """
+    Page ouverte quand on clique sur un lien de partage. Elle s'adapte à
+    l'appareil de la personne qui clique:
+    - Téléphone / TV Android: ouvre l'application mobile, sinon propose l'APK.
+    - Ordinateur (Windows, Mac, Linux): ouvre l'application PC
+      (jessnacinehub://), sinon propose de télécharger l'application PC -
+      plus jamais l'APK Android sur un ordinateur.
+    - iPhone / iPad: affiche le titre et les liens disponibles.
+    """
+    apk_url = ''
     try:
         update = AppUpdate.objects.filter(is_active=True).order_by('-updated_at').first()
         if update:
-            download_url = update.get_download_url(request) or ''
+            apk_url = update.get_download_url(request) or ''
     except Exception:
-        download_url = ''
+        apk_url = ''
 
-    fallback_url = download_url or 'https://jessnacinehub.pythonanywhere.com'
+    pc_download_url = _pc_download_url(request)
+    mobile_scheme_url = f"applicationmobile:///detail/{slug}"
+    pc_scheme_url = f"jessnacinehub://detail/{slug}?type={'tv' if content_type == 'tv' else 'movie'}"
+    site_url = 'https://jessnacinehub.pythonanywhere.com'
 
     escaped_title = escape(title)
     escaped_poster = escape(poster)
+    escaped_description = escape(description)
     og_image_tag = f'<meta property="og:image" content="{escaped_poster}">' if poster else ''
+    poster_tag = f'<img class="poster" src="{escaped_poster}" alt="">' if poster else ''
+    apk_link = f'<a class="btn ghost" id="apk-link" href="{escape(apk_url)}">Télécharger l\'application Android (APK)</a>' if apk_url else ''
 
-    html = f"""<!DOCTYPE html>
+    config = json.dumps({
+        'mobileScheme': mobile_scheme_url,
+        'pcScheme': pc_scheme_url,
+        'apkUrl': apk_url,
+        'siteUrl': site_url,
+    })
+
+    return f"""<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{escaped_title} - Jessna CinéHub</title>
 <meta property="og:title" content="{escaped_title}">
-<meta property="og:description" content="Regardez {escaped_title} sur Jessna CinéHub">
+<meta property="og:description" content="{escaped_description}">
 {og_image_tag}
 <style>
-  body {{ background:#050505; color:#fff; font-family: -apple-system, Roboto, sans-serif; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; margin:0; text-align:center; padding:24px; box-sizing:border-box; }}
-  a {{ color:#e50914; font-weight:700; }}
+  body {{ background:#050505; color:#fff; font-family: -apple-system, Segoe UI, Roboto, sans-serif; display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; margin:0; text-align:center; padding:24px; box-sizing:border-box; }}
+  .poster {{ width:160px; border-radius:10px; margin-bottom:18px; box-shadow:0 20px 50px rgba(0,0,0,.6); }}
+  h1 {{ font-size:22px; margin:0 0 8px; }}
+  p {{ color:#c9c9c9; margin:6px 0; }}
+  .actions {{ display:none; flex-direction:column; gap:10px; margin-top:18px; width:100%; max-width:360px; }}
+  .actions.visible {{ display:flex; }}
+  .btn {{ display:block; padding:12px 16px; border-radius:8px; background:#e50914; color:#fff; font-weight:700; text-decoration:none; }}
+  .btn.ghost {{ background:transparent; border:1px solid #444; color:#ddd; font-weight:600; }}
+  .hidden {{ display:none; }}
 </style>
-<script>
-  window.location.replace("{app_scheme_url}");
-  setTimeout(function () {{
-    window.location.replace("{fallback_url}");
-  }}, 1800);
-</script>
 </head>
 <body>
-  <p>Ouverture de {escaped_title} sur Jessna CinéHub…</p>
-  <p><a href="{app_scheme_url}">Cliquez ici si rien ne se passe</a></p>
+  {poster_tag}
+  <h1>{escaped_title}</h1>
+  <p id="status">Ouverture sur Jessna CinéHub…</p>
+
+  <div class="actions" id="pc-actions">
+    <a class="btn" href="{escape(pc_scheme_url)}">Ouvrir dans Jessna CinéHub (PC)</a>
+    <a class="btn ghost" href="{escape(pc_download_url)}">Télécharger Jessna CinéHub pour Windows</a>
+  </div>
+
+  <div class="actions" id="mobile-actions">
+    <a class="btn" href="{escape(mobile_scheme_url)}">Ouvrir dans l'application</a>
+    {apk_link}
+  </div>
+
+  <div class="actions" id="other-actions">
+    <a class="btn ghost" href="{escape(pc_download_url)}">Application PC (Windows)</a>
+    {apk_link}
+  </div>
+
+<script>
+  (function () {{
+    var cfg = {config};
+    var ua = navigator.userAgent || "";
+    var isAndroid = /android/i.test(ua);
+    var isIOS = /iphone|ipad|ipod/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    var isDesktop = !isAndroid && !isIOS;
+    var status = document.getElementById("status");
+    var appOpened = false;
+
+    // Si l'application s'ouvre, la page passe en arrière-plan: on ne
+    // déclenche alors AUCUN téléchargement.
+    function markOpened() {{ appOpened = true; }}
+    window.addEventListener("blur", markOpened);
+    window.addEventListener("pagehide", markOpened);
+    document.addEventListener("visibilitychange", function () {{
+      if (document.hidden) markOpened();
+    }});
+
+    function show(id) {{
+      var el = document.getElementById(id);
+      if (el) el.className = "actions visible";
+    }}
+
+    if (isDesktop) {{
+      // Ordinateur: application PC, jamais l'APK.
+      window.location.href = cfg.pcScheme;
+      setTimeout(function () {{
+        status.textContent = appOpened
+          ? "Le titre s'ouvre dans l'application Jessna CinéHub."
+          : "L'application PC n'est pas encore installée sur cet ordinateur ?";
+        show("pc-actions");
+      }}, 1800);
+    }} else if (isAndroid) {{
+      window.location.replace(cfg.mobileScheme);
+      setTimeout(function () {{
+        if (appOpened || document.hidden) return;
+        status.textContent = "L'application n'est pas installée ? Téléchargez-la ci-dessous.";
+        show("mobile-actions");
+        if (cfg.apkUrl) window.location.replace(cfg.apkUrl);
+      }}, 1800);
+    }} else {{
+      status.textContent = "Regardez ce titre sur Jessna CinéHub.";
+      show("other-actions");
+    }}
+  }})();
+</script>
 </body>
 </html>"""
+
+
+def share_redirect_view(request, content_type, slug):
+    """
+    Ancien format de lien de partage (/share/<type>/<slug>/?title=...).
+    La page s'adapte à l'appareil (voir _share_page_html).
+    """
+    title = request.GET.get('title') or 'Jessna CinéHub'
+    poster = request.GET.get('poster') or ''
+    html = _share_page_html(
+        request,
+        title=title,
+        poster=poster,
+        description=f"Regardez {title} sur Jessna CinéHub",
+        slug=slug,
+        content_type=content_type,
+    )
     return HttpResponse(html)
 
 @csrf_exempt
@@ -431,9 +544,9 @@ def share_code_redirect_view(request, code):
     """
     Version courte de share_redirect_view: /share/<code>/ au lieu de
     /share/<content_type>/<slug>/?title=...&poster=.... Le code est résolu
-    depuis SharedLink pour retrouver titre/affiche/slug, ce qui garde l'URL
-    visible courte et propre tout en gardant le clic fonctionnel pour ouvrir
-    l'application directement sur le contenu.
+    depuis SharedLink pour retrouver titre/affiche/slug. La page s'adapte à
+    l'appareil (application mobile sur Android, application PC sur
+    ordinateur) - voir _share_page_html.
     """
     try:
         link = SharedLink.objects.get(code=code)
@@ -442,21 +555,6 @@ def share_code_redirect_view(request, code):
 
     title = link.movie_title or 'Jessna CinéHub'
     poster = link.movie_poster or ''
-    app_scheme_url = f"applicationmobile:///detail/{link.movie_slug}"
-
-    download_url = ''
-    try:
-        update = AppUpdate.objects.filter(is_active=True).order_by('-updated_at').first()
-        if update:
-            download_url = update.get_download_url(request) or ''
-    except Exception:
-        download_url = ''
-
-    fallback_url = download_url or 'https://jessnacinehub.pythonanywhere.com'
-
-    escaped_title = escape(title)
-    escaped_poster = escape(poster)
-    og_image_tag = f'<meta property="og:image" content="{escaped_poster}">' if poster else ''
 
     # "Regardez sur Jessna CinéHub" (forme de politesse) s'affiche sous le
     # petit detail (catégorie • date de sortie) dans l'aperçu du lien.
@@ -464,34 +562,49 @@ def share_code_redirect_view(request, code):
     detail_line = ' • '.join(detail_parts)
     cta_line = 'Regardez sur Jessna CinéHub'
     description = f"{detail_line}\n{cta_line}" if detail_line else cta_line
-    escaped_description = escape(description)
 
-    html = f"""<!DOCTYPE html>
-<html lang="fr">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{escaped_title} - Jessna CinéHub</title>
-<meta property="og:title" content="{escaped_title}">
-<meta property="og:description" content="{escaped_description}">
-{og_image_tag}
-<style>
-  body {{ background:#050505; color:#fff; font-family: -apple-system, Roboto, sans-serif; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; margin:0; text-align:center; padding:24px; box-sizing:border-box; }}
-  a {{ color:#e50914; font-weight:700; }}
-</style>
-<script>
-  window.location.replace("{app_scheme_url}");
-  setTimeout(function () {{
-    window.location.replace("{fallback_url}");
-  }}, 1800);
-</script>
-</head>
-<body>
-  <p>Ouverture de {escaped_title} sur Jessna CinéHub…</p>
-  <p><a href="{app_scheme_url}">Cliquez ici si rien ne se passe</a></p>
-</body>
-</html>"""
+    html = _share_page_html(
+        request,
+        title=title,
+        poster=poster,
+        description=description,
+        slug=link.movie_slug,
+        content_type=link.content_type,
+    )
     return HttpResponse(html)
+
+def pc_app_update_view(request):
+    """
+    Mise à jour de l'application PC (admin > Versions PC). Interrogé par
+    l'application PC au démarrage puis toutes les 4 heures: si la version
+    active est plus récente que celle installée, l'application propose de
+    se mettre à jour (téléchargement + installation de l'installateur).
+    """
+    if request.method != 'GET':
+        return JsonResponse({'success': False, 'message': 'Methode non autorisee'}, status=405)
+    try:
+        release = PcAppRelease.objects.filter(is_active=True).order_by('-updated_at').first()
+        download_url = release.get_download_url(request) if release else ''
+        if not release or not download_url:
+            return JsonResponse({
+                'success': True,
+                'active': False,
+                'update_available': False,
+                'message': 'Aucune version PC active',
+            })
+        return JsonResponse({
+            'success': True,
+            'active': True,
+            'update_available': True,
+            'version': release.version,
+            'latest_version': release.version,
+            'download_url': download_url,
+            'message': release.message,
+            'force_update': False,
+            'updated_at': release.updated_at.isoformat(),
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': str(e)}, status=400)
 
 @csrf_exempt
 def app_update_view(request):

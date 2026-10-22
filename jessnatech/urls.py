@@ -28,6 +28,7 @@ urlpatterns = [
     path('api/reset-password/', views.reset_password_view, name='reset-password'),
     path('api/subscription-plans/', views.subscription_plans_view, name='subscription-plans'),
     path('api/app-update/', views.app_update_view, name='app-update'),
+    path('api/pc-app-update/', views.pc_app_update_view, name='pc-app-update'),
     path('api/user-subscription/', views.user_subscription_view, name='user-subscription'),
     path('api/create-subscription/', views.create_subscription_view, name='create-subscription'),
     path('api/payment-methods/', views.user_payment_methods_view, name='payment-methods'),

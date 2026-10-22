@@ -5,7 +5,7 @@ from django.conf import settings
 from django.contrib import admin, messages
 from django.utils import timezone
 from datetime import timedelta
-from .models import AppUpdate, SubscriptionPlan, PaymentMethod, Subscription, Payment, Notification, UserProfile, AppContent
+from .models import AppUpdate, SubscriptionPlan, PaymentMethod, Subscription, Payment, Notification, UserProfile, AppContent, PcAppRelease
 
 
 class AppUpdateAdminForm(forms.ModelForm):
@@ -82,6 +82,60 @@ class AppUpdateAdmin(admin.ModelAdmin):
     list_display = ['version', 'apk_file', 'is_active', 'force_update', 'updated_at']
     list_filter = ['is_active', 'force_update', 'created_at']
     search_fields = ['version', 'message', 'apk_file', 'apk_url']
+    readonly_fields = ['created_at', 'updated_at']
+
+class PcAppReleaseAdminForm(forms.ModelForm):
+    # Comme pour l'APK: un gros fichier .exe peut dépasser la limite d'envoi
+    # (erreur 413). On peut alors le déposer dans media/pc_updates/ puis le
+    # choisir ici.
+    server_installer_file = forms.ChoiceField(
+        label='Installateur deja present sur le serveur',
+        required=False,
+        choices=[],
+        help_text="Pour eviter l'erreur 413, deposez le .exe dans media/pc_updates/ puis selectionnez-le ici.",
+    )
+
+    class Meta:
+        model = PcAppRelease
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        pc_updates_dir = os.path.join(settings.MEDIA_ROOT, 'pc_updates')
+        choices = [('', 'Aucun fichier serveur')]
+        if os.path.isdir(pc_updates_dir):
+            for filename in sorted(os.listdir(pc_updates_dir), reverse=True):
+                if filename.lower().endswith(('.exe', '.msi', '.zip')):
+                    choices.append((f'pc_updates/{filename}', filename))
+        self.fields['server_installer_file'].choices = choices
+        if self.instance and self.instance.installer_file:
+            self.fields['server_installer_file'].initial = self.instance.installer_file.name
+
+    def clean(self):
+        cleaned = super().clean()
+        if not (cleaned.get('installer_file') or cleaned.get('server_installer_file') or cleaned.get('download_url')
+                or (self.instance and self.instance.installer_file)):
+            raise forms.ValidationError("Importez l'installateur, choisissez un fichier du serveur ou indiquez un lien de téléchargement.")
+        return cleaned
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        server_file = self.cleaned_data.get('server_installer_file')
+        uploaded = self.cleaned_data.get('installer_file')
+        if server_file and not uploaded:
+            instance.installer_file.name = server_file
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance
+
+
+@admin.register(PcAppRelease)
+class PcAppReleaseAdmin(admin.ModelAdmin):
+    form = PcAppReleaseAdminForm
+    list_display = ['version', 'installer_file', 'download_url', 'is_active', 'updated_at']
+    list_filter = ['is_active', 'created_at']
+    search_fields = ['version', 'message', 'download_url']
     readonly_fields = ['created_at', 'updated_at']
 
 @admin.register(Payment)

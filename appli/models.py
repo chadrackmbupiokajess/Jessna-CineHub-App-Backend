@@ -94,6 +94,48 @@ class AppUpdate(models.Model):
             return request.build_absolute_uri(url) if request else url
         return self.apk_url
 
+class PcAppRelease(models.Model):
+    """
+    Version de l'application PC (Windows), gérée dans l'admin comme l'APK
+    (AppUpdate). Le lien de la version ACTIVE est proposé sur la page de
+    partage quand on ouvre un lien depuis un ordinateur.
+    """
+    version = models.CharField(max_length=50, help_text="Version de l'application PC (ex: 2.3.3)")
+    installer_file = models.FileField(
+        upload_to='pc_updates/',
+        blank=True,
+        null=True,
+        help_text="Importer l'installateur Windows (.exe) de la nouvelle version",
+    )
+    download_url = models.URLField(
+        blank=True,
+        help_text="OU lien public de téléchargement (GitHub, Google Drive, Mega...). Utilisé si aucun fichier n'est importé.",
+    )
+    message = models.TextField(default="Téléchargez Jessna CinéHub pour Windows.", blank=True)
+    is_active = models.BooleanField(default=False, help_text="Activer pour proposer cette version sur la page de partage")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+        verbose_name = 'Version PC'
+        verbose_name_plural = 'Versions PC'
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # Une seule version PC active à la fois (comme pour l'APK).
+        if self.is_active:
+            PcAppRelease.objects.exclude(pk=self.pk).update(is_active=False)
+
+    def __str__(self):
+        return f"PC {self.version}"
+
+    def get_download_url(self, request=None):
+        if self.installer_file:
+            url = self.installer_file.url
+            return request.build_absolute_uri(url) if request else url
+        return self.download_url
+
 class SubscriptionPlan(models.Model):
     name = models.CharField(max_length=100)
     description = models.TextField()
