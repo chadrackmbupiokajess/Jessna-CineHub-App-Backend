@@ -3,6 +3,7 @@ from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.models import User
+from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
@@ -1360,6 +1361,55 @@ def add_to_watch_history(request):
     return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
 
 @csrf_exempt
+def delete_watch_history(request):
+    """Supprime du visionnage: une entrée, toute une série, ou tout l'historique.
+
+    POST JSON: {username, clear_all?: bool, id?: int, movie_slug?: str, content_type?: 'movie'|'tv'}
+    - clear_all=true: efface tout l'historique de l'utilisateur;
+    - série (content_type='tv' + movie_slug): efface tous ses épisodes;
+    - film: efface l'entrée `id` (et les autres entrées du même film).
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
+    try:
+        data = json.loads(request.body or b'{}')
+        username = data.get('username')
+        try:
+            user = User.objects.get(username=username)
+        except User.DoesNotExist:
+            return JsonResponse({'success': False, 'message': 'Utilisateur non trouvé'}, status=404)
+
+        entries = WatchHistory.objects.filter(user=user)
+        if data.get('clear_all') is True:
+            deleted, _ = entries.delete()
+            return JsonResponse({'success': True, 'deleted': deleted, 'message': 'Historique effacé'})
+
+        movie_slug = (data.get('movie_slug') or '').strip()
+        content_type = data.get('content_type')
+        entry_id = data.get('id')
+
+        if content_type == 'tv' and movie_slug:
+            targets = entries.filter(movie_slug=movie_slug, content_type='tv')
+        elif entry_id:
+            target = entries.filter(id=entry_id).first()
+            if target is None:
+                return JsonResponse({'success': True, 'deleted': 0, 'message': 'Déjà supprimé'})
+            if target.content_type == 'tv':
+                targets = entries.filter(movie_slug=target.movie_slug, content_type='tv')
+            else:
+                targets = entries.filter(movie_slug=target.movie_slug, season__isnull=True, episode__isnull=True) | entries.filter(id=target.id)
+        elif movie_slug:
+            targets = entries.filter(movie_slug=movie_slug)
+        else:
+            return JsonResponse({'success': False, 'message': 'Élément à supprimer manquant'}, status=400)
+
+        deleted, _ = targets.delete()
+        return JsonResponse({'success': True, 'deleted': deleted, 'message': 'Retiré de l\'historique'})
+    except Exception as e:
+        logger.error(f"Erreur suppression historique: {e}")
+        return JsonResponse({'success': False, 'message': str(e)}, status=400)
+
+@csrf_exempt
 def get_watch_history(request):
     if request.method == 'GET':
         try:
@@ -1947,3 +1997,97 @@ def cinetpay_return_view(request):
             }, status=500)
     
     return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
+
+
+# ---------------------------------------------------------------------------
+# PROFILS PARENT / ENFANT - code parental
+# ---------------------------------------------------------------------------
+# Deux profils fixes par compte: Parent (accès complet, protégé par un code à
+# 4 chiffres) et Enfant (dessins animés et contenus jeunesse). Le code est
+# stocké haché avec le système de mots de passe de Django.
+
+def _parental_user(username):
+    if not username:
+        return None
+    try:
+        return User.objects.get(username=username)
+    except User.DoesNotExist:
+        return None
+
+
+def _valid_pin_format(pin):
+    return isinstance(pin, str) and len(pin) == 4 and pin.isdigit()
+
+
+@csrf_exempt
+def parental_pin_status_view(request):
+    """GET ?username= -> {success, has_pin}"""
+    if request.method != 'GET':
+        return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
+    user = _parental_user(request.GET.get('username'))
+    if user is None:
+        return JsonResponse({'success': False, 'message': 'Utilisateur non trouvé'}, status=404)
+    profile, _ = UserProfile.objects.get_or_create(user=user)
+    return JsonResponse({'success': True, 'has_pin': bool(profile.parental_pin)})
+
+
+@csrf_exempt
+def parental_pin_verify_view(request):
+    """POST {username, pin} -> {success, valid}"""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
+    try:
+        data = json.loads(request.body or b'{}')
+    except ValueError:
+        return JsonResponse({'success': False, 'message': 'Requête invalide'}, status=400)
+    user = _parental_user(data.get('username'))
+    if user is None:
+        return JsonResponse({'success': False, 'message': 'Utilisateur non trouvé'}, status=404)
+    profile, _ = UserProfile.objects.get_or_create(user=user)
+    pin = str(data.get('pin') or '')
+    if not profile.parental_pin:
+        # Aucun code défini: le profil Parent n'est pas verrouillé.
+        return JsonResponse({'success': True, 'valid': True, 'has_pin': False})
+    valid = _valid_pin_format(pin) and check_password(pin, profile.parental_pin)
+    return JsonResponse({'success': True, 'valid': bool(valid), 'has_pin': True})
+
+
+@csrf_exempt
+def parental_pin_set_view(request):
+    """POST {username, pin, current_pin? | password?} -> {success}
+
+    Créer un code: aucun justificatif. Changer ou supprimer un code existant:
+    l'ancien code OU le mot de passe du compte (code oublié).
+    pin vide ("") = supprimer le code.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
+    try:
+        data = json.loads(request.body or b'{}')
+    except ValueError:
+        return JsonResponse({'success': False, 'message': 'Requête invalide'}, status=400)
+    user = _parental_user(data.get('username'))
+    if user is None:
+        return JsonResponse({'success': False, 'message': 'Utilisateur non trouvé'}, status=404)
+    profile, _ = UserProfile.objects.get_or_create(user=user)
+
+    new_pin = str(data.get('pin') if data.get('pin') is not None else '')
+    if new_pin and not _valid_pin_format(new_pin):
+        return JsonResponse({'success': False, 'message': 'Le code doit contenir 4 chiffres.'}, status=400)
+
+    if profile.parental_pin:
+        current_pin = str(data.get('current_pin') or '')
+        password = data.get('password') or ''
+        allowed = (_valid_pin_format(current_pin) and check_password(current_pin, profile.parental_pin)) or (
+            bool(password) and user.check_password(password)
+        )
+        if not allowed:
+            return JsonResponse({'success': False, 'message': 'Code actuel ou mot de passe incorrect.'}, status=403)
+
+    profile.parental_pin = make_password(new_pin) if new_pin else ''
+    profile.save(update_fields=['parental_pin', 'updated_at'])
+    return JsonResponse({
+        'success': True,
+        'has_pin': bool(new_pin),
+        'message': 'Code parental enregistré' if new_pin else 'Code parental supprimé',
+    })

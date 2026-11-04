@@ -41,6 +41,8 @@ class UserProfile(models.Model):
     favorite_count = models.IntegerField(default=0)
     recent_watch_count = models.IntegerField(default=0)
     downloads_count = models.IntegerField(default=0)
+    # Code parental (4 chiffres) du profil Parent, stocké HACHÉ (jamais en clair).
+    parental_pin = models.CharField(max_length=128, blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
