@@ -2056,9 +2056,9 @@ def parental_pin_verify_view(request):
 def parental_pin_set_view(request):
     """POST {username, pin, current_pin? | password?} -> {success}
 
-    Créer un code: aucun justificatif. Changer ou supprimer un code existant:
-    l'ancien code OU le mot de passe du compte (code oublié).
-    pin vide ("") = supprimer le code.
+    Créer un code: aucun justificatif. Changer un code existant: l'ancien
+    code OU le mot de passe du compte (code oublié). Le code est obligatoire:
+    il ne peut pas être supprimé.
     """
     if request.method != 'POST':
         return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
@@ -2072,7 +2072,9 @@ def parental_pin_set_view(request):
     profile, _ = UserProfile.objects.get_or_create(user=user)
 
     new_pin = str(data.get('pin') if data.get('pin') is not None else '')
-    if new_pin and not _valid_pin_format(new_pin):
+    # Le code parental est obligatoire pour le profil Parent: on peut le
+    # changer, jamais le supprimer.
+    if not _valid_pin_format(new_pin):
         return JsonResponse({'success': False, 'message': 'Le code doit contenir 4 chiffres.'}, status=400)
 
     if profile.parental_pin:
