@@ -1290,6 +1290,15 @@ def change_password_view(request):
             }, status=400)
     return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
 
+def _viewer_from(value):
+    """Profil Parent / Enfant d'une requête ('kids' ou 'parent' par défaut).
+
+    Les anciennes versions de l'application (et l'app PC) n'envoient rien:
+    elles restent sur le profil Parent, comme avant.
+    """
+    return 'kids' if str(value or '').strip().lower() == 'kids' else 'parent'
+
+
 @csrf_exempt
 def add_to_watch_history(request):
     if request.method == 'POST':
@@ -1305,15 +1314,17 @@ def add_to_watch_history(request):
                     'message': 'Utilisateur non trouvé'
                 }, status=404)
             
-            # Créer ou mettre à jour l'historique
+            # Créer ou mettre à jour l'historique (du profil Parent ou Enfant)
             movie_slug = data.get('movie_slug')
             season = data.get('season')
             episode = data.get('episode')
+            viewer = _viewer_from(data.get('viewer'))
             
             # Pour les séries, on vérifie si c'est le même épisode
             if season and episode:
                 existing = WatchHistory.objects.filter(
                     user=user,
+                    viewer=viewer,
                     movie_slug=movie_slug,
                     season=season,
                     episode=episode
@@ -1322,6 +1333,7 @@ def add_to_watch_history(request):
                 # Pour les films, on vérifie si c'est le même film
                 existing = WatchHistory.objects.filter(
                     user=user,
+                    viewer=viewer,
                     movie_slug=movie_slug,
                     season__isnull=True,
                     episode__isnull=True
@@ -1337,6 +1349,7 @@ def add_to_watch_history(request):
                 # Créer une nouvelle entrée
                 WatchHistory.objects.create(
                     user=user,
+                    viewer=viewer,
                     movie_title=data.get('movie_title'),
                     movie_slug=movie_slug,
                     movie_poster=data.get('movie_poster', ''),
@@ -1379,7 +1392,7 @@ def delete_watch_history(request):
         except User.DoesNotExist:
             return JsonResponse({'success': False, 'message': 'Utilisateur non trouvé'}, status=404)
 
-        entries = WatchHistory.objects.filter(user=user)
+        entries = WatchHistory.objects.filter(user=user, viewer=_viewer_from(data.get('viewer')))
         if data.get('clear_all') is True:
             deleted, _ = entries.delete()
             return JsonResponse({'success': True, 'deleted': deleted, 'message': 'Historique effacé'})
@@ -1423,7 +1436,8 @@ def get_watch_history(request):
                     'message': 'Utilisateur non trouvé'
                 }, status=404)
             
-            history = WatchHistory.objects.filter(user=user)[:50]  # Limiter à 50 entrées
+            viewer = _viewer_from(request.GET.get('viewer'))
+            history = WatchHistory.objects.filter(user=user, viewer=viewer)[:50]  # Limiter à 50 entrées
             
             history_data = []
             for item in history:
@@ -1467,7 +1481,7 @@ def get_my_list(request):
                     'message': 'Utilisateur non trouvé'
                 }, status=404)
 
-            items = MyListItem.objects.filter(user=user)
+            items = MyListItem.objects.filter(user=user, viewer=_viewer_from(request.GET.get('viewer')))
 
             items_data = []
             for item in items:
@@ -1517,6 +1531,7 @@ def add_to_my_list(request):
             MyListItem.objects.update_or_create(
                 user=user,
                 movie_slug=movie_slug,
+                viewer=_viewer_from(data.get('viewer')),
                 defaults={
                     'movie_title': data.get('movie_title', ''),
                     'movie_poster': data.get('movie_poster', ''),
@@ -1525,7 +1540,7 @@ def add_to_my_list(request):
             )
 
             profile, _ = UserProfile.objects.get_or_create(user=user)
-            profile.favorite_count = MyListItem.objects.filter(user=user).count()
+            profile.favorite_count = MyListItem.objects.filter(user=user, viewer='parent').count()
             profile.save(update_fields=['favorite_count'])
 
             return JsonResponse({
@@ -1556,10 +1571,10 @@ def remove_from_my_list(request):
                 }, status=404)
 
             movie_slug = data.get('movie_slug')
-            MyListItem.objects.filter(user=user, movie_slug=movie_slug).delete()
+            MyListItem.objects.filter(user=user, movie_slug=movie_slug, viewer=_viewer_from(data.get('viewer'))).delete()
 
             profile, _ = UserProfile.objects.get_or_create(user=user)
-            profile.favorite_count = MyListItem.objects.filter(user=user).count()
+            profile.favorite_count = MyListItem.objects.filter(user=user, viewer='parent').count()
             profile.save(update_fields=['favorite_count'])
 
             return JsonResponse({

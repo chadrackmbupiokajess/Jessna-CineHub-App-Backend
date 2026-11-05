@@ -235,6 +235,8 @@ class WatchHistory(models.Model):
     watched_at = models.DateTimeField(auto_now_add=True)
     progress_percentage = models.IntegerField(default=0, help_text="Pourcentage de visionnage")
     duration_watched = models.IntegerField(default=0, help_text="Durée visionnée en secondes")
+    # Profil qui a regardé: 'parent' (par défaut) ou 'kids' (profil Enfant).
+    viewer = models.CharField(max_length=10, default='parent', db_index=True)
 
     class Meta:
         ordering = ['-watched_at']
@@ -248,11 +250,13 @@ class MyListItem(models.Model):
     movie_slug = models.CharField(max_length=255)
     movie_poster = models.URLField(blank=True)
     content_type = models.CharField(max_length=20, choices=[('movie', 'Film'), ('tv', 'Série')], default='movie')
+    # Profil propriétaire de l'entrée: 'parent' (par défaut) ou 'kids'.
+    viewer = models.CharField(max_length=10, default='parent', db_index=True)
     added_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ['-added_at']
-        unique_together = ('user', 'movie_slug')
+        unique_together = ('user', 'movie_slug', 'viewer')
 
     def __str__(self):
         return f"{self.user.username} - {self.movie_title}"
