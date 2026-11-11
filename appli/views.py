@@ -651,6 +651,32 @@ def app_update_view(request):
     return JsonResponse({'success': False, 'message': 'Methode non autorisee'}, status=405)
 
 @csrf_exempt
+def app_version_view(request):
+    """
+    Version de l'application gérée dans l'admin (Add app update > Version).
+    - build_version : version de l'entrée la plus RÉCENTE (active ou non).
+      Lue au moment de construire l'APK (app.config.js) : on crée d'abord la
+      version dans l'admin (sans l'activer), on construit l'APK, puis on
+      importe le fichier et on coche "is active".
+    - active_version : version proposée aux utilisateurs.
+    """
+    if request.method != 'GET':
+        return JsonResponse({'success': False, 'message': 'Methode non autorisee'}, status=405)
+    try:
+        latest = AppUpdate.objects.order_by('-created_at', '-pk').first()
+        active = AppUpdate.objects.filter(is_active=True).order_by('-updated_at').first()
+        build_version = (latest.version or '').strip() if latest else ''
+        active_version = (active.version or '').strip() if active else ''
+        return JsonResponse({
+            'success': True,
+            'build_version': build_version,
+            'version': build_version,
+            'active_version': active_version,
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': str(e)}, status=400)
+
+@csrf_exempt
 def user_subscription_view(request):
     if request.method == 'GET':
         try:
