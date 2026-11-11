@@ -210,10 +210,10 @@ def send_reset_code_email(user, code):
     logos = load_email_logos()
     if 'jnc-logo' in logos and 'jessna-cinehub' in logos:
         brand_html = (
-            '<img src="cid:jnc-logo" width="120" height="49" alt="JnC" '
-            'style="display:block;border:0;outline:none;width:120px;height:auto;margin:0 auto;">'
-            '<img src="cid:jessna-cinehub" width="240" height="53" alt="Jessna CinéHub" '
-            'style="display:block;border:0;outline:none;width:240px;max-width:100%;height:auto;margin:14px auto 0;">'
+            '<img src="cid:jnc-logo" width="64" height="26" alt="JnC" '
+            'style="display:block;border:0;outline:none;width:64px;height:auto;margin:0 auto;">'
+            '<img src="cid:jessna-cinehub" width="150" height="33" alt="Jessna CinéHub" '
+            'style="display:block;border:0;outline:none;width:150px;max-width:100%;height:auto;margin:8px auto 0;">'
         )
     else:
         # Secours si les images manquent: le nom en texte.
@@ -226,7 +226,7 @@ def send_reset_code_email(user, code):
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#000;padding:32px 12px;">
 <tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#141414;border:1px solid #2a2a2a;border-radius:16px;">
-<tr><td align="center" style="padding:28px 24px 8px;">
+<tr><td align="center" style="padding:24px 24px 4px;">
 {brand_html}
 </td></tr>
 <tr><td style="padding:16px 28px 0;color:#fff;font-size:20px;font-weight:bold;text-align:center;">Réinitialisation du mot de passe</td></tr>
