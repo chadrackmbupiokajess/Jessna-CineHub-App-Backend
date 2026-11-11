@@ -8,6 +8,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
 from django.core.cache import cache
+from django.utils import translation
 from django.utils.html import escape
 from django.conf import settings
 from django.utils import timezone
@@ -367,12 +368,18 @@ def reset_password_view(request):
                         'message': 'Lien de reinitialisation invalide ou expire.'
                     }, status=400)
 
-            try:
-                validate_password(new_password, reset_token.user)
-            except ValidationError as validation_error:
+            # Règles du mot de passe expliquées EN FRANÇAIS (Django est réglé
+            # en anglais ailleurs: on ne change la langue que pour ce message).
+            with translation.override('fr'):
+                try:
+                    validate_password(new_password, reset_token.user)
+                    password_error = ''
+                except ValidationError as validation_error:
+                    password_error = ' '.join(str(message) for message in validation_error.messages)
+            if password_error:
                 return JsonResponse({
                     'success': False,
-                    'message': ' '.join(validation_error.messages)
+                    'message': password_error
                 }, status=400)
 
             user = reset_token.user
