@@ -26,6 +26,7 @@ urlpatterns = [
     path('api/register/', views.register_view, name='register'),
     path('api/request-password-reset/', views.request_password_reset_view, name='request-password-reset'),
     path('api/reset-password/', views.reset_password_view, name='reset-password'),
+    path('api/verify-reset-code/', views.verify_reset_code_view, name='verify-reset-code'),
     path('api/subscription-plans/', views.subscription_plans_view, name='subscription-plans'),
     path('api/app-update/', views.app_update_view, name='app-update'),
     path('api/app-version/', views.app_version_view, name='app-version'),

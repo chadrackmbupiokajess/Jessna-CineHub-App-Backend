@@ -7,6 +7,7 @@ from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
+from django.core.cache import cache
 from django.utils.html import escape
 from django.conf import settings
 from django.utils import timezone
@@ -122,6 +123,116 @@ def build_password_reset_link(token):
     separator = '&' if '?' in reset_base_url else '?'
     return f"{reset_base_url}{separator}token={token}"
 
+# ---------------------------------------------------------------------------
+# MOT DE PASSE OUBLIÉ AVEC UN CODE À 6 CHIFFRES (application mobile / TV / PC)
+# 1) /api/request-password-reset/ {email, method: 'code'} -> e-mail avec code
+# 2) /api/verify-reset-code/ {email, code}                -> code correct ?
+# 3) /api/reset-password/ {email, code, new_password, confirm_password}
+# Le code expire après 15 minutes, ne sert qu'une fois, et 5 erreurs
+# l'annulent (il faut alors en demander un nouveau).
+# ---------------------------------------------------------------------------
+RESET_CODE_TTL_MINUTES = 15
+RESET_CODE_MAX_ATTEMPTS = 5
+RESET_CODE_RESEND_SECONDS = 60
+
+
+def hash_reset_code(user_id, code):
+    return hash_reset_token(f"code:{user_id}:{code}")
+
+
+def clean_reset_code(value):
+    return ''.join(ch for ch in str(value or '') if ch.isdigit())[:6]
+
+
+def reset_attempts_key(user_id):
+    return f"jessna_pwreset_attempts:{user_id}"
+
+
+def find_valid_reset_code(email, code):
+    """Renvoie (utilisateur, jeton, message d'erreur)."""
+    user = User.objects.filter(email__iexact=(email or '').strip()).first()
+    if not user:
+        return None, None, 'Aucun compte ne correspond à cette adresse e-mail.'
+    attempts = cache.get(reset_attempts_key(user.id), 0)
+    if attempts >= RESET_CODE_MAX_ATTEMPTS:
+        return user, None, "Trop d'essais. Demandez un nouveau code."
+    code = clean_reset_code(code)
+    reset_token = None
+    if len(code) == 6:
+        reset_token = PasswordResetToken.objects.filter(
+            user=user,
+            token_hash=hash_reset_code(user.id, code),
+        ).first()
+    if not reset_token or not reset_token.is_valid():
+        attempts += 1
+        cache.set(reset_attempts_key(user.id), attempts, RESET_CODE_TTL_MINUTES * 60)
+        if attempts >= RESET_CODE_MAX_ATTEMPTS:
+            PasswordResetToken.objects.filter(user=user, used_at__isnull=True).update(used_at=timezone.now())
+            return user, None, "Trop d'essais. Demandez un nouveau code."
+        left = RESET_CODE_MAX_ATTEMPTS - attempts
+        return user, None, f"Code incorrect ou expiré. Il reste {left} essai{'s' if left > 1 else ''}."
+    return user, reset_token, ''
+
+
+def send_reset_code_email(user, code):
+    subject = f"{code} est votre code Jessna CinéHub"
+    text = (
+        f"Bonjour {user.username},\n\n"
+        "Vous avez demandé à réinitialiser votre mot de passe Jessna CinéHub.\n\n"
+        f"Votre code : {code}\n\n"
+        f"Ce code est valable {RESET_CODE_TTL_MINUTES} minutes et ne peut servir qu'une fois.\n"
+        "Si vous n'êtes pas à l'origine de cette demande, ignorez cet e-mail : votre mot de passe ne change pas.\n\n"
+        "L'équipe Jessna CinéHub"
+    )
+    spaced_code = ' '.join(code)
+    html = f"""<!doctype html>
+<html lang="fr"><body style="margin:0;padding:0;background:#000;font-family:Arial,Helvetica,sans-serif;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#000;padding:32px 12px;">
+<tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#141414;border:1px solid #2a2a2a;border-radius:16px;">
+<tr><td align="center" style="padding:28px 24px 8px;">
+<div style="font-size:30px;font-weight:900;color:#e50914;letter-spacing:1px;">JnC</div>
+<div style="font-size:13px;color:#8c8c8c;margin-top:4px;">Jessna CinéHub</div>
+</td></tr>
+<tr><td style="padding:16px 28px 0;color:#fff;font-size:20px;font-weight:bold;text-align:center;">Réinitialisation du mot de passe</td></tr>
+<tr><td style="padding:12px 28px 0;color:#b8b8b8;font-size:15px;line-height:22px;text-align:center;">
+Bonjour {escape(user.username)}, voici votre code. Saisissez-le dans l'application Jessna CinéHub.
+</td></tr>
+<tr><td align="center" style="padding:24px 28px;">
+<div style="display:inline-block;background:#000;border:1px solid #e50914;border-radius:12px;padding:16px 22px;font-size:34px;font-weight:900;letter-spacing:6px;color:#fff;">{spaced_code}</div>
+</td></tr>
+<tr><td style="padding:0 28px 26px;color:#8c8c8c;font-size:13px;line-height:20px;text-align:center;">
+Valable {RESET_CODE_TTL_MINUTES} minutes, une seule fois.<br>
+Si vous n'avez rien demandé, ignorez cet e-mail : votre mot de passe ne change pas.
+</td></tr>
+</table>
+<div style="color:#555;font-size:12px;margin-top:16px;">© Jessna CinéHub</div>
+</td></tr></table></body></html>"""
+    send_mail(
+        subject,
+        text,
+        getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@jessnacinehub.com'),
+        [user.email],
+        fail_silently=False,
+        html_message=html,
+    )
+
+
+@csrf_exempt
+def verify_reset_code_view(request):
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'message': 'Methode non autorisee'}, status=405)
+    try:
+        data = json.loads(request.body)
+        user, reset_token, error = find_valid_reset_code(data.get('email'), data.get('code'))
+        if not reset_token:
+            return JsonResponse({'success': False, 'message': error}, status=400)
+        return JsonResponse({'success': True, 'message': 'Code valide.', 'username': user.username})
+    except Exception as e:
+        logger.exception('Password reset code check failed')
+        return JsonResponse({'success': False, 'message': str(e)}, status=400)
+
+
 @csrf_exempt
 def request_password_reset_view(request):
     if request.method == 'POST':
@@ -141,6 +252,45 @@ def request_password_reset_view(request):
                     'success': False,
                     'message': 'Aucun compte ne correspond a cette adresse e-mail.'
                 }, status=404)
+
+            if (data.get('method') or '').strip().lower() == 'code':
+                # E-mails pas encore configurés (voir .env): on le dit
+                # clairement au lieu de prétendre que le code est parti.
+                if 'console' in str(getattr(settings, 'EMAIL_BACKEND', '')) or not getattr(settings, 'EMAIL_HOST', ''):
+                    logger.error('Password reset: EMAIL_BACKEND/EMAIL_HOST non configures dans .env')
+                    return JsonResponse({
+                        'success': False,
+                        'message': "L'envoi des e-mails est momentanément indisponible. Réessayez plus tard ou contactez le support."
+                    }, status=503)
+                latest = PasswordResetToken.objects.filter(user=user).order_by('-created_at').first()
+                if latest and (timezone.now() - latest.created_at).total_seconds() < RESET_CODE_RESEND_SECONDS:
+                    return JsonResponse({
+                        'success': False,
+                        'message': "Un code vient d'être envoyé. Patientez une minute avant d'en demander un autre."
+                    }, status=429)
+                # Anciennes demandes supprimées: un seul code actif à la fois.
+                PasswordResetToken.objects.filter(user=user).delete()
+                cache.delete(reset_attempts_key(user.id))
+                code = f"{secrets.randbelow(1000000):06d}"
+                PasswordResetToken.objects.create(
+                    user=user,
+                    token_hash=hash_reset_code(user.id, code),
+                    expires_at=timezone.now() + timedelta(minutes=RESET_CODE_TTL_MINUTES)
+                )
+                try:
+                    send_reset_code_email(user, code)
+                except Exception:
+                    logger.exception('Password reset code e-mail failed')
+                    PasswordResetToken.objects.filter(user=user).delete()
+                    return JsonResponse({
+                        'success': False,
+                        'message': "Impossible d'envoyer l'e-mail pour le moment. Réessayez dans quelques minutes."
+                    }, status=503)
+                return JsonResponse({
+                    'success': True,
+                    'message': 'Un code à 6 chiffres a été envoyé par e-mail.',
+                    'expires_in': RESET_CODE_TTL_MINUTES * 60,
+                })
 
             PasswordResetToken.objects.filter(user=user, used_at__isnull=True).update(used_at=timezone.now())
             raw_token = secrets.token_urlsafe(40)
@@ -185,10 +335,11 @@ def reset_password_view(request):
         try:
             data = json.loads(request.body)
             token = (data.get('token') or '').strip()
+            code = clean_reset_code(data.get('code'))
             new_password = data.get('new_password') or ''
             confirm_password = data.get('confirm_password') or ''
 
-            if not token or not new_password or not confirm_password:
+            if (not token and not code) or not new_password or not confirm_password:
                 return JsonResponse({
                     'success': False,
                     'message': 'Tous les champs sont requis'
@@ -200,15 +351,21 @@ def reset_password_view(request):
                     'message': 'Les mots de passe ne correspondent pas.'
                 }, status=400)
 
-            reset_token = PasswordResetToken.objects.select_related('user').filter(
-                token_hash=hash_reset_token(token)
-            ).first()
+            if code:
+                # Mot de passe oublié avec le code à 6 chiffres (application).
+                _, reset_token, code_error = find_valid_reset_code(data.get('email'), code)
+                if not reset_token:
+                    return JsonResponse({'success': False, 'message': code_error}, status=400)
+            else:
+                reset_token = PasswordResetToken.objects.select_related('user').filter(
+                    token_hash=hash_reset_token(token)
+                ).first()
 
-            if not reset_token or not reset_token.is_valid():
-                return JsonResponse({
-                    'success': False,
-                    'message': 'Lien de reinitialisation invalide ou expire.'
-                }, status=400)
+                if not reset_token or not reset_token.is_valid():
+                    return JsonResponse({
+                        'success': False,
+                        'message': 'Lien de reinitialisation invalide ou expire.'
+                    }, status=400)
 
             try:
                 validate_password(new_password, reset_token.user)
@@ -222,6 +379,7 @@ def reset_password_view(request):
             user.set_password(new_password)
             user.save()
             PasswordResetToken.objects.filter(user=user, used_at__isnull=True).update(used_at=timezone.now())
+            cache.delete(reset_attempts_key(user.id))
 
             return JsonResponse({
                 'success': True,

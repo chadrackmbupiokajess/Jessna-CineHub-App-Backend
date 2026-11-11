@@ -18,6 +18,9 @@ load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+# Sur PythonAnywhere, le dossier courant n'est pas celui du projet: on lit
+# aussi le fichier .env placé à côté de manage.py (réglages e-mail, etc.).
+load_dotenv(BASE_DIR / '.env')
 
 
 # Quick-start development settings - unsuitable for production
