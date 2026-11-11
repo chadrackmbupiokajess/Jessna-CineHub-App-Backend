@@ -6,7 +6,9 @@ from django.contrib.auth.models import User
 from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
-from django.core.mail import send_mail
+from django.core.mail import send_mail, EmailMultiAlternatives
+from email.mime.image import MIMEImage
+from pathlib import Path
 from django.core.cache import cache
 from django.utils import translation
 from django.utils.html import escape
@@ -175,6 +177,25 @@ def find_valid_reset_code(email, code):
     return user, reset_token, ''
 
 
+# Logos de l'e-mail (fichiers dans appli/email_assets/), joints à l'e-mail
+# et affichés dedans (images "cid:"), sans besoin d'hébergement.
+EMAIL_ASSETS_DIR = Path(__file__).resolve().parent / 'email_assets'
+EMAIL_LOGOS = (
+    ('jnc-logo', 'jnc-logo.png'),
+    ('jessna-cinehub', 'jessna-cinehub.png'),
+)
+
+
+def load_email_logos():
+    logos = {}
+    for cid, filename in EMAIL_LOGOS:
+        try:
+            logos[cid] = (filename, (EMAIL_ASSETS_DIR / filename).read_bytes())
+        except OSError:
+            logger.warning('Logo e-mail introuvable: %s', filename)
+    return logos
+
+
 def send_reset_code_email(user, code):
     subject = f"{code} est votre code Jessna CinéHub"
     text = (
@@ -186,14 +207,27 @@ def send_reset_code_email(user, code):
         "L'équipe Jessna CinéHub"
     )
     spaced_code = ' '.join(code)
+    logos = load_email_logos()
+    if 'jnc-logo' in logos and 'jessna-cinehub' in logos:
+        brand_html = (
+            '<img src="cid:jnc-logo" width="120" height="49" alt="JnC" '
+            'style="display:block;border:0;outline:none;width:120px;height:auto;margin:0 auto;">'
+            '<img src="cid:jessna-cinehub" width="240" height="53" alt="Jessna CinéHub" '
+            'style="display:block;border:0;outline:none;width:240px;max-width:100%;height:auto;margin:14px auto 0;">'
+        )
+    else:
+        # Secours si les images manquent: le nom en texte.
+        brand_html = (
+            '<div style="font-size:30px;font-weight:900;color:#e50914;letter-spacing:1px;">JnC</div>'
+            '<div style="font-size:13px;color:#8c8c8c;margin-top:4px;">Jessna CinéHub</div>'
+        )
     html = f"""<!doctype html>
 <html lang="fr"><body style="margin:0;padding:0;background:#000;font-family:Arial,Helvetica,sans-serif;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#000;padding:32px 12px;">
 <tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#141414;border:1px solid #2a2a2a;border-radius:16px;">
 <tr><td align="center" style="padding:28px 24px 8px;">
-<div style="font-size:30px;font-weight:900;color:#e50914;letter-spacing:1px;">JnC</div>
-<div style="font-size:13px;color:#8c8c8c;margin-top:4px;">Jessna CinéHub</div>
+{brand_html}
 </td></tr>
 <tr><td style="padding:16px 28px 0;color:#fff;font-size:20px;font-weight:bold;text-align:center;">Réinitialisation du mot de passe</td></tr>
 <tr><td style="padding:12px 28px 0;color:#b8b8b8;font-size:15px;line-height:22px;text-align:center;">
@@ -209,14 +243,22 @@ Si vous n'avez rien demandé, ignorez cet e-mail : votre mot de passe ne change 
 </table>
 <div style="color:#555;font-size:12px;margin-top:16px;">© Jessna CinéHub</div>
 </td></tr></table></body></html>"""
-    send_mail(
+    message = EmailMultiAlternatives(
         subject,
         text,
         getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@jessnacinehub.com'),
         [user.email],
-        fail_silently=False,
-        html_message=html,
     )
+    message.attach_alternative(html, 'text/html')
+    if logos:
+        # "related": les images s'affichent DANS l'e-mail (pas en pièce jointe).
+        message.mixed_subtype = 'related'
+        for cid, (filename, data) in logos.items():
+            image = MIMEImage(data, _subtype='png')
+            image.add_header('Content-ID', f'<{cid}>')
+            image.add_header('Content-Disposition', 'inline', filename=filename)
+            message.attach(image)
+    message.send(fail_silently=False)
 
 
 @csrf_exempt
