@@ -93,7 +93,12 @@ class AppUpdate(models.Model):
     def get_download_url(self, request=None):
         if self.apk_file:
             url = self.apk_file.url
-            return request.build_absolute_uri(url) if request else url
+            url = request.build_absolute_uri(url) if request else url
+            # PythonAnywhere est en HTTPS, mais Django voit la requête en
+            # HTTP derrière leur proxy: Android refuse les liens "http://".
+            if url.startswith('http://') and '.pythonanywhere.com' in url:
+                url = 'https://' + url[len('http://'):]
+            return url
         return self.apk_url
 
 class PcAppRelease(models.Model):
