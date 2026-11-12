@@ -15,7 +15,8 @@ from django.utils.html import escape
 from django.conf import settings
 from django.utils import timezone
 from datetime import timedelta
-from .models import AppUpdate, SubscriptionPlan, PaymentMethod, Subscription, Payment, Notification, UserProfile, WatchHistory, AppContent, PasswordResetToken, MyListItem, SharedLink, PcAppRelease
+from .models import AppUpdate, SubscriptionPlan, PaymentMethod, Subscription, Payment, Notification, UserProfile, WatchHistory, AppContent, PasswordResetToken, MyListItem, SharedLink, PcAppRelease, Announcement
+from django.db.models import Q
 import hashlib
 import json
 import logging
@@ -1211,7 +1212,7 @@ def notifications_view(request):
 
             user = User.objects.get(username=username)
             notifications = Notification.objects.filter(user=user).order_by('-created_at')
-            
+
             notifications_data = []
             for notification in notifications:
                 notifications_data.append({
@@ -1224,7 +1225,31 @@ def notifications_view(request):
                     'created_at': notification.created_at.isoformat(),
                     'expires_at': notification.expires_at.isoformat() if notification.expires_at else None
                 })
-            
+
+            # ANNONCES POUR TOUS (promotions, nouveautés...): ajoutées à la
+            # liste de chaque utilisateur, avec son propre état "lue".
+            try:
+                now = timezone.now()
+                announcements = Announcement.objects.filter(is_active=True, starts_at__lte=now).filter(
+                    Q(ends_at__isnull=True) | Q(ends_at__gt=now)
+                ).order_by('-starts_at')[:30]
+                read_ids = set(user.read_announcements.values_list('id', flat=True))
+                for announcement in announcements:
+                    notifications_data.append({
+                        'id': f'ann-{announcement.id}',
+                        'notification_type': f'announcement_{announcement.category}',
+                        'category': announcement.category,
+                        'title': announcement.title,
+                        'message': announcement.message,
+                        'is_read': announcement.id in read_ids,
+                        'is_active': True,
+                        'created_at': announcement.starts_at.isoformat(),
+                        'expires_at': announcement.ends_at.isoformat() if announcement.ends_at else None
+                    })
+                notifications_data.sort(key=lambda item: item['created_at'], reverse=True)
+            except Exception:
+                logger.exception('Annonces indisponibles')
+
             return JsonResponse({
                 'success': True,
                 'notifications': notifications_data
@@ -1249,6 +1274,14 @@ def notifications_view(request):
             
             user = User.objects.get(username=username)
             
+            if action == 'mark_read' and isinstance(notification_id, str) and notification_id.startswith('ann-'):
+                # Annonce pour tous: lue pour CET utilisateur seulement.
+                announcement = Announcement.objects.get(id=int(notification_id[4:]))
+                announcement.read_by.add(user)
+                return JsonResponse({
+                    'success': True,
+                    'message': 'Notification marquée comme lue'
+                })
             if action == 'mark_read' and notification_id:
                 notification = Notification.objects.get(id=notification_id, user=user)
                 notification.is_read = True
@@ -1259,6 +1292,7 @@ def notifications_view(request):
                 })
             elif action == 'mark_all_read':
                 Notification.objects.filter(user=user).update(is_read=True)
+                user.read_announcements.add(*Announcement.objects.filter(is_active=True))
                 return JsonResponse({
                     'success': True,
                     'message': 'Toutes les notifications marquées comme lues'

@@ -320,3 +320,40 @@ class AppContent(models.Model):
         return f"{self.get_content_type_display()} - {self.title}"
 
 # Create your models here.
+
+
+class Announcement(models.Model):
+    """
+    ANNONCE ENVOYÉE À TOUS LES UTILISATEURS (promotion de prix, nouveautés,
+    information, maintenance...). Elle apparaît dans la cloche de l'appli
+    et en notification sur le téléphone (avec le jingle), une seule fois
+    par utilisateur.
+    """
+    CATEGORY_CHOICES = [
+        ('promotion', 'Promotion / prix'),
+        ('new_content', 'Nouveaux films et séries'),
+        ('info', 'Information'),
+        ('maintenance', 'Maintenance'),
+    ]
+
+    title = models.CharField(max_length=120, help_text="Titre court, ex: -50 % sur l'abonnement mensuel")
+    message = models.TextField(help_text="Message envoyé à tous les utilisateurs")
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='info')
+    is_active = models.BooleanField(default=True, help_text="Décocher pour retirer l'annonce de l'application")
+    starts_at = models.DateTimeField(default=timezone.now, help_text="L'annonce est envoyée à partir de cette date")
+    ends_at = models.DateTimeField(null=True, blank=True, help_text="Date de fin (optionnel), ex: fin de la promotion")
+    created_at = models.DateTimeField(auto_now_add=True)
+    read_by = models.ManyToManyField(User, blank=True, related_name='read_announcements', editable=False)
+
+    class Meta:
+        ordering = ['-starts_at']
+        verbose_name = 'Annonce'
+        verbose_name_plural = 'Annonces'
+
+    def is_live(self):
+        now = timezone.now()
+        return self.is_active and self.starts_at <= now and (self.ends_at is None or self.ends_at > now)
+
+    def __str__(self):
+        return self.title
+

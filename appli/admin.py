@@ -5,7 +5,7 @@ from django.conf import settings
 from django.contrib import admin, messages
 from django.utils import timezone
 from datetime import timedelta
-from .models import AppUpdate, SubscriptionPlan, PaymentMethod, Subscription, Payment, Notification, UserProfile, AppContent, PcAppRelease
+from .models import AppUpdate, SubscriptionPlan, PaymentMethod, Subscription, Payment, Notification, UserProfile, AppContent, PcAppRelease, Announcement
 
 
 class AppUpdateAdminForm(forms.ModelForm):
@@ -253,3 +253,18 @@ class AppContentAdmin(admin.ModelAdmin):
     list_filter = ['content_type', 'is_active', 'updated_at']
     search_fields = ['title', 'subtitle', 'content']
     readonly_fields = ['created_at', 'updated_at']
+
+
+@admin.register(Announcement)
+class AnnouncementAdmin(admin.ModelAdmin):
+    """Annonces envoyées à TOUS les utilisateurs (cloche + notification)."""
+    list_display = ('title', 'category', 'is_active', 'starts_at', 'ends_at', 'readers_count', 'created_at')
+    list_filter = ('category', 'is_active')
+    search_fields = ('title', 'message')
+    list_editable = ('is_active',)
+    fields = ('title', 'message', 'category', 'is_active', 'starts_at', 'ends_at')
+
+    @admin.display(description='Lue par')
+    def readers_count(self, obj):
+        return obj.read_by.count()
+
