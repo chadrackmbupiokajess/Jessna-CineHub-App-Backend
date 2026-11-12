@@ -896,30 +896,39 @@ def user_subscription_view(request):
                 }, status=400)
 
             user = User.objects.get(username=username)
-            subscription = Subscription.objects.filter(user=user).first()
-
-            # Vérifier si l'abonnement est valide et le paiement est complété
+            # Abonnement en cours: le plus récent qui est actif, pas expiré et
+            # payé (même règle que le profil et l'app mobile). Avant, on
+            # prenait le premier abonnement du compte (souvent un ancien,
+            # expiré): l'app PC affichait "Abonnement requis" à tort.
+            subscription = (
+                Subscription.objects
+                .filter(
+                    user=user,
+                    status='active',
+                    end_date__gt=timezone.now(),
+                    payment__status='completed',
+                )
+                .order_by('-end_date')
+                .distinct()
+                .first()
+            )
             if subscription and subscription.is_valid():
-                # Vérifier le statut du paiement
-                payment = Payment.objects.filter(subscription=subscription).first()
-                if payment and payment.status == 'completed':
-                    return JsonResponse({
-                        'success': True,
-                        'has_subscription': True,
-                        'subscription': {
-                            'plan_name': subscription.plan.name,
-                            'status': subscription.status,
-                            'start_date': subscription.start_date.isoformat(),
-                            'end_date': subscription.end_date.isoformat(),
+                return JsonResponse({
+                    'success': True,
+                    'has_subscription': True,
+                    'subscription': {
+                        'plan_name': subscription.plan.name,
+                        'status': subscription.status,
+                        'start_date': subscription.start_date.isoformat(),
+                        'end_date': subscription.end_date.isoformat(),
                         'auto_renew': subscription.auto_renew
                     }
                 })
-            else:
-                return JsonResponse({
-                    'success': True,
-                    'has_subscription': False,
-                    'message': 'Aucun abonnement actif'
-                })
+            return JsonResponse({
+                'success': True,
+                'has_subscription': False,
+                'message': 'Aucun abonnement actif'
+            })
         except User.DoesNotExist:
             return JsonResponse({
                 'success': False,
