@@ -67,6 +67,7 @@ urlpatterns = [
     path('api/live-tv/categories/', live_tv.live_tv_categories_view, name='live-tv-categories'),
     path('api/live-tv/categories/<int:category_id>/channels/', live_tv.live_tv_category_channels_view, name='live-tv-category-channels'),
     path('api/live-tv/channels/<int:channel_id>/', live_tv.live_tv_channel_view, name='live-tv-channel'),
+    path('api/live-tv/channels/<int:channel_id>/report/', live_tv.live_tv_channel_report_view, name='live-tv-channel-report'),
 ]
 
 if settings.DEBUG:

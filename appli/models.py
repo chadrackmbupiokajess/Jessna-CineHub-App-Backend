@@ -396,8 +396,21 @@ class LiveTvChannel(models.Model):
     source = models.CharField(max_length=60, blank=True, verbose_name='Source', help_text="Ex: Free-TV, partenaire, ajout manuel")
     order = models.PositiveIntegerField(default=100, verbose_name='Ordre')
     is_active = models.BooleanField(default=True, verbose_name='Active')
+    # Signalements envoyés par l'application: une chaîne qui échoue plusieurs
+    # fois sans jamais remarcher est masquée automatiquement, et revient dès
+    # qu'un utilisateur arrive à la lire.
+    failure_count = models.PositiveIntegerField(default=0, verbose_name='Échecs signalés')
+    last_failure_at = models.DateTimeField(null=True, blank=True, verbose_name='Dernier échec')
+    last_success_at = models.DateTimeField(null=True, blank=True, verbose_name='Dernière lecture réussie')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    # Nombre d'échecs à partir duquel la chaîne est masquée dans l'application.
+    AUTO_HIDE_FAILURES = 5
+
+    @property
+    def is_auto_hidden(self):
+        return self.failure_count >= self.AUTO_HIDE_FAILURES
 
     class Meta:
         ordering = ['category__order', 'order', 'name']

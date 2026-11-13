@@ -324,13 +324,14 @@ class LiveTvCategoryAdmin(admin.ModelAdmin):
 
 @admin.register(LiveTvChannel)
 class LiveTvChannelAdmin(admin.ModelAdmin):
-    list_display = ('name', 'category', 'country', 'source', 'order', 'is_active')
+    list_display = ('name', 'category', 'country', 'source', 'order', 'is_active', 'health', 'last_success_at')
     list_editable = ('order', 'is_active')
     list_filter = ('is_active', 'category', 'source')
+    readonly_fields = ('failure_count', 'last_failure_at', 'last_success_at')
     search_fields = ('name', 'country', 'stream_url')
     list_select_related = ('category',)
     list_per_page = 100
-    actions = ['activate_channels', 'deactivate_channels']
+    actions = ['activate_channels', 'deactivate_channels', 'reset_failures']
     change_list_template = 'admin/appli/livetvchannel/change_list.html'
 
     @admin.action(description='Activer les chaînes sélectionnées')
@@ -342,6 +343,19 @@ class LiveTvChannelAdmin(admin.ModelAdmin):
     def deactivate_channels(self, request, queryset):
         count = queryset.update(is_active=False)
         self.message_user(request, f'{count} chaîne(s) désactivée(s).', messages.SUCCESS)
+
+    @admin.display(description='État')
+    def health(self, obj):
+        if obj.is_auto_hidden:
+            return f'Masquée ({obj.failure_count} échecs)'
+        if obj.failure_count:
+            return f'{obj.failure_count} échec(s)'
+        return 'OK' if obj.last_success_at else '—'
+
+    @admin.action(description='Remettre à zéro les échecs (réafficher)')
+    def reset_failures(self, request, queryset):
+        count = queryset.update(failure_count=0)
+        self.message_user(request, f'{count} chaîne(s) réaffichée(s).', messages.SUCCESS)
 
     def get_urls(self):
         from django.urls import path
