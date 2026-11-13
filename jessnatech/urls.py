@@ -19,6 +19,7 @@ from django.urls import path
 from django.conf import settings
 from django.conf.urls.static import static
 from appli import views
+from appli import live_tv
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -62,6 +63,10 @@ urlpatterns = [
     path('share/<str:content_type>/<str:slug>/', views.share_redirect_view, name='share-redirect'),
     path('share/<str:code>/', views.share_code_redirect_view, name='share-code-redirect'),
     path('.well-known/assetlinks.json', views.android_asset_links_view, name='android-asset-links'),
+    # TV en direct (FootLive): chaînes gérées dans l'admin.
+    path('api/live-tv/categories/', live_tv.live_tv_categories_view, name='live-tv-categories'),
+    path('api/live-tv/categories/<int:category_id>/channels/', live_tv.live_tv_category_channels_view, name='live-tv-category-channels'),
+    path('api/live-tv/channels/<int:channel_id>/', live_tv.live_tv_channel_view, name='live-tv-channel'),
 ]
 
 if settings.DEBUG:

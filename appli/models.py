@@ -357,3 +357,52 @@ class Announcement(models.Model):
     def __str__(self):
         return self.title
 
+
+
+class LiveTvCategory(models.Model):
+    """
+    TV EN DIRECT (FootLive): catégorie de chaînes affichée dans l'application
+    (Sport, Chaînes françaises, Afrique, Info...). Décocher "Active" pour la
+    retirer de l'application sans rien supprimer.
+    """
+    name = models.CharField(max_length=100, unique=True, verbose_name='Nom')
+    logo_url = models.URLField(max_length=500, blank=True, verbose_name='Logo (lien)')
+    order = models.PositiveIntegerField(default=100, verbose_name='Ordre', help_text="Plus petit = affiché en premier")
+    is_active = models.BooleanField(default=True, verbose_name='Active')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['order', 'name']
+        verbose_name = 'TV en direct - catégorie'
+        verbose_name_plural = 'TV en direct - catégories'
+
+    def __str__(self):
+        return self.name
+
+
+class LiveTvChannel(models.Model):
+    """
+    TV EN DIRECT (FootLive): une chaîne et son lien de diffusion (HLS .m3u8).
+    N'ajoutez que des chaînes gratuites et officielles, ou celles que vous avez
+    le droit de diffuser (partenaire, fournisseur sous licence).
+    """
+    category = models.ForeignKey(LiveTvCategory, on_delete=models.CASCADE, related_name='channels', verbose_name='Catégorie')
+    name = models.CharField(max_length=150, verbose_name='Nom')
+    logo_url = models.URLField(max_length=500, blank=True, verbose_name='Logo (lien)')
+    stream_url = models.URLField(max_length=1000, verbose_name='Lien du flux (.m3u8)')
+    referer = models.CharField(max_length=500, blank=True, verbose_name='Referer (si le flux l\'exige)')
+    user_agent = models.CharField(max_length=300, blank=True, verbose_name='User-Agent (si le flux l\'exige)')
+    country = models.CharField(max_length=60, blank=True, verbose_name='Pays')
+    source = models.CharField(max_length=60, blank=True, verbose_name='Source', help_text="Ex: Free-TV, partenaire, ajout manuel")
+    order = models.PositiveIntegerField(default=100, verbose_name='Ordre')
+    is_active = models.BooleanField(default=True, verbose_name='Active')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['category__order', 'order', 'name']
+        verbose_name = 'TV en direct - chaîne'
+        verbose_name_plural = 'TV en direct - chaînes'
+
+    def __str__(self):
+        return f"{self.name} ({self.category})"

@@ -6,6 +6,7 @@ from django.contrib import admin, messages
 from django.utils import timezone
 from datetime import timedelta
 from .models import AppUpdate, SubscriptionPlan, PaymentMethod, Subscription, Payment, Notification, UserProfile, AppContent, PcAppRelease, Announcement
+from .models import LiveTvCategory, LiveTvChannel
 
 
 class AppUpdateAdminForm(forms.ModelForm):
@@ -268,3 +269,132 @@ class AnnouncementAdmin(admin.ModelAdmin):
     def readers_count(self, obj):
         return obj.read_by.count()
 
+
+
+# ---------------------------------------------------------------------------
+# TV EN DIRECT (FootLive): chaînes gérées ici (plus de Yacine).
+# Bouton "Importer une liste M3U" en haut de la liste des chaînes.
+# ---------------------------------------------------------------------------
+class LiveTvImportForm(forms.Form):
+    playlist_file = forms.FileField(
+        required=False,
+        label="Fichier M3U",
+        help_text="Liste de chaînes (.m3u / .m3u8 / .txt), ex: la liste Free-TV.",
+    )
+    playlist_url = forms.URLField(
+        required=False,
+        label="ou lien de la liste",
+        help_text="Ex: https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8",
+    )
+    source = forms.CharField(initial="Free-TV", max_length=60, label="Source")
+    all_categories = forms.BooleanField(
+        required=False,
+        label="Activer aussi les catégories par pays",
+        help_text="Sinon seules Sport, Chaînes françaises, Afrique, Info et Films sont actives (les autres restent à activer ici).",
+    )
+
+    def clean(self):
+        cleaned = super().clean()
+        if not cleaned.get("playlist_file") and not cleaned.get("playlist_url"):
+            raise forms.ValidationError("Choisissez un fichier ou collez un lien.")
+        return cleaned
+
+
+@admin.register(LiveTvCategory)
+class LiveTvCategoryAdmin(admin.ModelAdmin):
+    list_display = ('name', 'order', 'is_active', 'channels_count')
+    list_editable = ('order', 'is_active')
+    search_fields = ('name',)
+    actions = ['activate_categories', 'deactivate_categories']
+
+    @admin.display(description='Chaînes actives')
+    def channels_count(self, obj):
+        return obj.channels.filter(is_active=True).count()
+
+    @admin.action(description='Activer les catégories sélectionnées')
+    def activate_categories(self, request, queryset):
+        count = queryset.update(is_active=True)
+        self.message_user(request, f'{count} catégorie(s) activée(s).', messages.SUCCESS)
+
+    @admin.action(description='Désactiver les catégories sélectionnées')
+    def deactivate_categories(self, request, queryset):
+        count = queryset.update(is_active=False)
+        self.message_user(request, f'{count} catégorie(s) désactivée(s).', messages.SUCCESS)
+
+
+@admin.register(LiveTvChannel)
+class LiveTvChannelAdmin(admin.ModelAdmin):
+    list_display = ('name', 'category', 'country', 'source', 'order', 'is_active')
+    list_editable = ('order', 'is_active')
+    list_filter = ('is_active', 'category', 'source')
+    search_fields = ('name', 'country', 'stream_url')
+    list_select_related = ('category',)
+    list_per_page = 100
+    actions = ['activate_channels', 'deactivate_channels']
+    change_list_template = 'admin/appli/livetvchannel/change_list.html'
+
+    @admin.action(description='Activer les chaînes sélectionnées')
+    def activate_channels(self, request, queryset):
+        count = queryset.update(is_active=True)
+        self.message_user(request, f'{count} chaîne(s) activée(s).', messages.SUCCESS)
+
+    @admin.action(description='Désactiver les chaînes sélectionnées')
+    def deactivate_channels(self, request, queryset):
+        count = queryset.update(is_active=False)
+        self.message_user(request, f'{count} chaîne(s) désactivée(s).', messages.SUCCESS)
+
+    def get_urls(self):
+        from django.urls import path
+        custom = [
+            path(
+                'import-m3u/',
+                self.admin_site.admin_view(self.import_m3u_view),
+                name='appli_livetvchannel_import_m3u',
+            ),
+        ]
+        return custom + super().get_urls()
+
+    def import_m3u_view(self, request):
+        import urllib.request
+        from django.shortcuts import redirect
+        from django.template.response import TemplateResponse
+        from .live_tv_m3u import MAIN_CATEGORIES, import_channels
+
+        if not self.has_add_permission(request):
+            from django.core.exceptions import PermissionDenied
+            raise PermissionDenied
+
+        form = LiveTvImportForm(request.POST or None, request.FILES or None)
+        if request.method == 'POST' and form.is_valid():
+            try:
+                upload = form.cleaned_data.get('playlist_file')
+                if upload:
+                    text = upload.read().decode('utf-8', errors='replace')
+                else:
+                    req = urllib.request.Request(
+                        form.cleaned_data['playlist_url'],
+                        headers={'User-Agent': 'JessnaCineHub/1.0'},
+                    )
+                    with urllib.request.urlopen(req, timeout=60) as response:
+                        text = response.read().decode('utf-8', errors='replace')
+            except Exception as error:
+                self.message_user(request, f'Impossible de lire la liste: {error}', messages.ERROR)
+            else:
+                activate = None if form.cleaned_data.get('all_categories') else {name for name, _ in MAIN_CATEGORIES}
+                summary = import_channels(text, source=form.cleaned_data.get('source') or 'Free-TV', activate_categories=activate)
+                rejected = sum(summary['rejected'].values())
+                self.message_user(
+                    request,
+                    f"{summary['created']} chaîne(s) ajoutée(s), {summary['updated']} mise(s) à jour, "
+                    f"{rejected} écartée(s) (non officielles, payantes ou illisibles par l'application).",
+                    messages.SUCCESS,
+                )
+                return redirect('admin:appli_livetvchannel_changelist')
+
+        context = {
+            **self.admin_site.each_context(request),
+            'title': 'Importer une liste de chaînes (M3U)',
+            'form': form,
+            'opts': self.model._meta,
+        }
+        return TemplateResponse(request, 'admin/appli/livetvchannel/import_m3u.html', context)
